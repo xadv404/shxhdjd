@@ -17,7 +17,6 @@ HEADER = "== By Skid == == > https://cc-checker.eu == == > https://t.me/observer
 
 C_LABEL = Fore.WHITE + Style.BRIGHT
 C_DIM = Fore.LIGHTBLACK_EX
-C_ACCENT = Fore.LIGHTMAGENTA_EX + Style.BRIGHT
 C_INFO = Fore.LIGHTCYAN_EX
 C_OK = Fore.LIGHTGREEN_EX + Style.BRIGHT
 C_BAD = Fore.LIGHTRED_EX + Style.BRIGHT
