@@ -27,25 +27,6 @@ C_PROXY = Fore.LIGHTBLUE_EX
 _username_lock = threading.Lock()
 _username_index = 0
 
-ASCII_ART = [
-    r" ____  _    _     _                  ",
-    r"/ ___|| | _(_) __| |                 ",
-    r"\___ \| |/ / |/ _` |                 ",
-    r" ___) |   <| | (_| |                 ",
-    r"|____/|_|\_\_|\__,_|                 ",
-    r" | || |   ___                        ",
-    r" | || |_ / __|                       ",
-    r" |__   _| (__                        ",
-    r"    |_|  \___|                       ",
-    r"  _  _  ____  _               _                ",
-    r" | || |/ ___|| |__   ___  ___| | _____ _ __   ",
-    r" | || || |   | '_ \ / _ \/ __| |/ / _ \ '__|  ",
-    r" |__   _| |___| | | |  __/ (__|   <  __/ |     ",
-    r"    |_|  \____|_| |_|\___|\___| |\_\___|_|     ",
-    r"",
-    r"   4c Checker By Skid - @Observerinfo3         ",
-]
-
 # Default proxy scheme when the line has no protocol (http / socks5 / socks4)
 DEFAULT_PROXY_SCHEME = "http"
 
@@ -54,12 +35,8 @@ _proxy_index = 0
 _proxies = []
 
 
-def get_red_gradient(index, total):
-    ratio = index / max(total - 1, 1)
-    r = int(160 + 95 * ratio)
-    g = int(10 + 40 * ratio)
-    b = int(90 - 70 * ratio)
-    return f"\033[38;2;{r};{g};{b}m"
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def print_separator(title=None):
@@ -77,15 +54,6 @@ def stat_line(label, value, value_color=Fore.LIGHTWHITE_EX, raw=False):
         print(f"  {C_LABEL}{label:<10}{C_DIM}│ {value}{Style.RESET_ALL}")
     else:
         print(f"  {C_LABEL}{label:<10}{C_DIM}│ {value_color}{value}{Style.RESET_ALL}")
-
-
-def print_ascii():
-    os.system("cls" if os.name == "nt" else "clear")
-    total = len(ASCII_ART)
-    for i, line in enumerate(ASCII_ART):
-        color = get_red_gradient(i, total)
-        print(color + line + Style.RESET_ALL)
-    print()
 
 
 def generate_username():
@@ -283,7 +251,7 @@ def init_save_file():
 
 def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy_count, recent_results, username_source, current_proxy_num, current_proxy_label):
     sys.stdout.write("\033[H")
-    print_ascii()
+    clear_screen()
 
     print_separator("CHECKER")
     stat_line("Usernames", username_source, C_INFO)
@@ -357,7 +325,7 @@ def main():
     start_time = time.time()
 
     os.system("cls" if os.name == "nt" else "clear")
-    print_ascii()
+    clear_screen()
     print_separator("DEMARRAGE")
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
     if proxy_count:
