@@ -1,81 +1,53 @@
-# Domain Grabber — nouveaux domaines + scan vuln (sources gratuites)
+# Domain Grabber — mode unique : CT + vérif HTTP + export
 
 output:
   directory: ./output
-  format: jsonl
+  format: txt
   deduplicate: true
 
-# Ne garder que les domaines jamais vus (nouveaux)
 new_domains:
   enabled: true
   database: ./data/domains.db
   max_age_hours: 24
 
-# Mode haute performance — cible 2-3k domaines/s
 performance:
-  turbo: false
-  format: txt              # txt plus rapide que jsonl
-  batch_write: 2000
-  flush_interval: 0.25
+  log_interval: 3          # logs [INFO] toutes les 3s
+  format: txt
   db_commit_interval: 4
   inflight_per_log: 24
   parse_workers: 32
   tail: false
   start_offset: 500000
 
-# Vérification rapide (massdns → httpx ou fallback async)
 verify:
-  enabled: false
-  require_http: true        # true = HTTP alive, false = port ouvert seulement
+  require_http: true
   batch_size: 2000
   timeout: 2
-  http_concurrency: 1000
+  http_concurrency: 400
   tcp_concurrency: 1000
   dns_workers: 500
   masscan_rate: 100000
-  prefer_tools: true        # massdns/masscan/httpx si installés
-  resolvers_file: ""        # ou fichier custom, sinon liste intégrée
+  prefer_tools: true
+  resolvers_file: ""
   ports: [443, 80]
   http_status_max: 499
 
 sources:
-  certstream:
-    enabled: false           # désactivé en turbo (trop lent seul)
-
-  crtsh:
-    enabled: false           # désactivé en turbo (rate-limited)
-
   ct_logs:
     enabled: true
-    discover: true            # auto-détection logs CT Google actifs
-    tail: false               # false = max débit sur fenêtre récente
+    discover: true
+    tail: false
     start_offset: 500000
     batch_size: 32
     inflight_per_log: 24
     parse_workers: 32
 
-  commoncrawl:
-    enabled: false
-    tlds: [com, net, org, io]
-    workers: 4
-    max_per_tld: 0
-
-  zone_files:
-    enabled: false
-    directory: ./zone_files
-
-  rapid7_fdns:
-    enabled: false
-    directory: ./rapid7_data
-
 scanner:
-  enabled: false           # désactivé par défaut (scan = goulot d'étranglement)
+  enabled: false
   concurrency: 50
   timeout: 10
-  # Détection safe par défaut (pas d'exploit RCE/XXE actif)
   aggressive: false
-  callback_url: ""         # URL OOB optionnelle pour SSRF/XXE blind
-
+  callback_url: ""
   checks:
     lfi: true
     private_paths: true
@@ -83,42 +55,18 @@ scanner:
     react2shell: true
     xxe: true
     ssrf: true
-    ggb: true              # GraphQL introspection / endpoints exposés
-    secrets: true          # .env, paths sensibles, secrets dans JS
-
+    ggb: true
+    secrets: true
   paths:
     - /.env
-    - /.env.local
-    - /.env.production
     - /.git/HEAD
-    - /.git/config
-    - /config.json
-    - /wp-config.php.bak
-    - /backup.sql
-    - /admin
-    - /debug
-    - /actuator
-    - /server-status
     - /graphql
     - /api/graphql
-    - /v1/graphql
-
-  lfi_params:
-    - file
-    - page
-    - path
-    - template
-    - include
-    - doc
-    - folder
-    - root
-    - pg
-
+  lfi_params: [file, page, path, template, include]
   secret_patterns:
     - 'AKIA[0-9A-Z]{16}'
     - 'sk_live_[0-9a-zA-Z]{24,}'
     - 'ghp_[0-9a-zA-Z]{36}'
-    - 'xox[baprs]-[0-9a-zA-Z-]{10,}'
 
 filters:
   punycode: false
