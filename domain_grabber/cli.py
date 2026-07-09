@@ -123,9 +123,16 @@ async def _scan_batch(
     return total
 
 
-async def run_grabber(cfg: dict[str, Any], target: int = 0, duration: int = 0, turbo: bool = False) -> None:
+async def run_grabber(
+    cfg: dict[str, Any],
+    target: int = 0,
+    duration: int = 0,
+    turbo: bool = False,
+    verify: bool = False,
+) -> None:
     if turbo or cfg.get("performance", {}).get("turbo", False):
-        await run_turbo_grabber(cfg, target=target, duration=duration)
+        do_verify = verify or cfg.get("verify", {}).get("enabled", False)
+        await run_turbo_grabber(cfg, target=target, duration=duration, verify=do_verify)
         return
 
     output = cfg.get("output", {})
@@ -366,6 +373,13 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
         p.add_argument("--no-scan", action="store_true", help="Collecter sans scanner")
         p.add_argument("--turbo", action="store_true", help="Mode haute performance (2-3k dom/s)")
+        p.add_argument(
+            "--verify",
+            "--alive-only",
+            action="store_true",
+            dest="verify",
+            help="Vérif HTTP rapide (massdns+httpx ou fallback async) — exporte uniquement les vivants",
+        )
 
     scan_p = sub.add_parser("scan", help="Scanner un fichier de domaines")
     scan_p.add_argument("-i", "--input", required=True, help="Fichier domains (txt ou jsonl)")
@@ -389,12 +403,16 @@ def main(argv: list[str] | None = None) -> None:
     else:
         if getattr(args, "no_scan", False):
             cfg.setdefault("scanner", {})["enabled"] = False
+        if getattr(args, "verify", False):
+            cfg.setdefault("verify", {})["enabled"] = True
+            cfg.setdefault("performance", {})["turbo"] = True
         asyncio.run(
             run_grabber(
                 cfg,
                 target=getattr(args, "count", 0) or 0,
                 duration=getattr(args, "time", 0) or 0,
-                turbo=getattr(args, "turbo", False),
+                turbo=getattr(args, "turbo", False) or getattr(args, "verify", False),
+                verify=getattr(args, "verify", False),
             )
         )
 

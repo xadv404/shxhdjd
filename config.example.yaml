@@ -23,6 +23,21 @@ performance:
   tail: false
   start_offset: 500000
 
+# Vérification rapide (massdns → httpx ou fallback async)
+verify:
+  enabled: false
+  require_http: true        # true = HTTP alive, false = port ouvert seulement
+  batch_size: 2000
+  timeout: 2
+  http_concurrency: 1000
+  tcp_concurrency: 1000
+  dns_workers: 500
+  masscan_rate: 100000
+  prefer_tools: true        # massdns/masscan/httpx si installés
+  resolvers_file: ""        # ou fichier custom, sinon liste intégrée
+  ports: [443, 80]
+  http_status_max: 499
+
 sources:
   certstream:
     enabled: false           # désactivé en turbo (trop lent seul)
