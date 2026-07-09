@@ -24,7 +24,6 @@ C_PROXY = Fore.LIGHTBLUE_EX
 
 STAT_LABEL_WIDTH = 9
 RECENT_LIMIT = 5
-HITS_LIMIT = 10
 
 _username_lock = threading.Lock()
 _username_index = 0
@@ -152,19 +151,6 @@ def get_next_proxy():
     return proxy, idx + 1
 
 
-def proxy_label(proxy):
-    if not proxy:
-        return "direct"
-    url = proxy.get("http", "")
-    if "@" in url:
-        auth = url.split("@", 1)[0]
-        auth = auth.replace("http://", "").replace("https://", "")
-        if ":" in auth:
-            return auth.rsplit(":", 1)[0]
-        return auth
-    return url.replace("http://", "").replace("https://", "")
-
-
 def log_error(username, e, proxy=None):
     with open("errors-logs.txt", "a", encoding="utf-8") as f:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -241,19 +227,10 @@ def init_save_file():
         open(SAVE_FILE, "w", encoding="utf-8").close()
 
 
-def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy_count, recent_results, username_source, current_proxy_num, current_proxy_label):
+def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results):
     sys.stdout.write("\033[H")
     clear_screen()
 
-    stat_line("Usernames", username_source, C_INFO)
-    if proxy_count:
-        proxy_text = (
-            f"{C_PROXY}{current_proxy_num}/{proxy_count} "
-            f"{C_DIM}({C_PROXY}{current_proxy_label}{C_DIM})"
-        )
-        stat_line("Proxy", proxy_text, raw=True)
-
-    print()
     stat_line("Checked", str(generated), Fore.LIGHTWHITE_EX)
     stat_line("Valid", str(hits), C_OK)
     stat_line("Invalid", str(bad), C_BAD)
@@ -265,28 +242,19 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
     print()
     print_divider()
     print()
-    print(C_OK + "  Hits" + Style.RESET_ALL)
-    if not hit_list:
-        print(C_DIM + "  (aucun pour l'instant)" + Style.RESET_ALL)
-    else:
-        for username in hit_list[-HITS_LIMIT:]:
-            recent_line("✔", username, "VALID", C_OK)
-
-    print()
-    print_divider()
-    print()
 
     if not recent_results:
         print(C_DIM + "  (en attente...)" + Style.RESET_ALL)
-    for username, result in recent_results[-RECENT_LIMIT:]:
-        if result == "hit":
-            recent_line("✔", username, "VALID", C_OK)
-        elif result == "bad":
-            recent_line("✘", username, "INVALID", C_BAD)
-        elif result == "proxy_error":
-            recent_line("⚠", username, "PROXY", Fore.LIGHTMAGENTA_EX)
-        else:
-            recent_line("•", username, result.upper(), C_WARN)
+    else:
+        for username, result in recent_results[-RECENT_LIMIT:]:
+            if result == "hit":
+                recent_line("✔", username, "VALID", C_OK)
+            elif result == "bad":
+                recent_line("✘", username, "INVALID", C_BAD)
+            elif result == "proxy_error":
+                recent_line("⚠", username, "PROXY", Fore.LIGHTMAGENTA_EX)
+            else:
+                recent_line("•", username, result.upper(), C_WARN)
     print(Style.RESET_ALL)
 
 
@@ -303,8 +271,6 @@ def main():
         print(C_BAD + "[!] Le fichier est vide ou invalide." + Style.RESET_ALL)
         sys.exit(1)
 
-    username_source = f"{len(usernames)} from {os.path.basename(username_file)}"
-
     proxy_file = PROXY_FILE
     if len(sys.argv) > 1:
         proxy_file = sys.argv[1]
@@ -318,7 +284,6 @@ def main():
     bad = 0
     errors = 0
     proxy_errors = 0
-    hit_list = []
     recent_results = []
     start_time = time.time()
 
@@ -334,13 +299,10 @@ def main():
 
     while True:
         username = get_next_username(usernames)
-        current_proxy_num = 0
-        current_proxy_label = "direct"
 
         while True:
             if _proxies:
-                proxy, current_proxy_num = get_next_proxy()
-                current_proxy_label = proxy_label(proxy)
+                proxy, _ = get_next_proxy()
             else:
                 proxy = None
 
@@ -362,7 +324,6 @@ def main():
 
         if result == "hit":
             hits += 1
-            hit_list.append(username)
             save_hit(username)
         elif result == "bad":
             bad += 1
@@ -376,8 +337,7 @@ def main():
 
         print_stats(
             generated, hits, bad, errors, proxy_errors, cpm,
-            hit_list, proxy_count, recent_results, username_source,
-            current_proxy_num, current_proxy_label,
+            proxy_count, recent_results,
         )
 
 
