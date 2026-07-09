@@ -13,7 +13,6 @@ init(autoreset=True)
 
 SAVE_FILE = "save.txt"
 PROXY_FILE = "proxies.txt"
-HEADER = "== By Skid == == > https://cc-checker.eu == == > https://t.me/observerinfo3 == == =="
 
 C_LABEL = Fore.WHITE + Style.BRIGHT
 C_DIM = Fore.LIGHTBLACK_EX
@@ -29,25 +28,6 @@ RECENT_LIMIT = 5
 _username_lock = threading.Lock()
 _username_index = 0
 
-ASCII_ART = [
-    r" ____  _    _     _                  ",
-    r"/ ___|| | _(_) __| |                 ",
-    r"\___ \| |/ / |/ _` |                 ",
-    r" ___) |   <| | (_| |                 ",
-    r"|____/|_|\_\_|\__,_|                 ",
-    r" | || |   ___                        ",
-    r" | || |_ / __|                       ",
-    r" |__   _| (__                        ",
-    r"    |_|  \___|                       ",
-    r"  _  _  ____  _               _                ",
-    r" | || |/ ___|| |__   ___  ___| | _____ _ __   ",
-    r" | || || |   | '_ \ / _ \/ __| |/ / _ \ '__|  ",
-    r" |__   _| |___| | | |  __/ (__|   <  __/ |     ",
-    r"    |_|  \____|_| |_|\___|\___| |\_\___|_|     ",
-    r"",
-    r"   4c Checker By Skid - @Observerinfo3         ",
-]
-
 DEFAULT_PROXY_SCHEME = "http"
 
 _proxy_lock = threading.Lock()
@@ -55,12 +35,8 @@ _proxy_index = 0
 _proxies = []
 
 
-def get_red_gradient(index, total):
-    ratio = index / max(total - 1, 1)
-    r = int(160 + 95 * ratio)
-    g = int(10 + 40 * ratio)
-    b = int(90 - 70 * ratio)
-    return f"\033[38;2;{r};{g};{b}m"
+def clear_screen():
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def stat_line(label, value, value_color=Fore.LIGHTWHITE_EX, raw=False):
@@ -77,15 +53,6 @@ def print_divider():
 
 def recent_line(icon, username, status, color):
     print(f"  {color}{icon} {username:<12} {status}{Style.RESET_ALL}")
-
-
-def print_ascii():
-    os.system("cls" if os.name == "nt" else "clear")
-    total = len(ASCII_ART)
-    for i, line in enumerate(ASCII_ART):
-        color = get_red_gradient(i, total)
-        print(color + line + Style.RESET_ALL)
-    print()
 
 
 def generate_username():
@@ -135,13 +102,6 @@ def get_next_username(usernames):
 
 
 def format_proxy(line, default_scheme=DEFAULT_PROXY_SCHEME):
-    """
-    Convert a proxy line into a requests-compatible proxies dict.
-
-    Primary format (proxy-cheap):
-      host:port:username:password
-      e.g. proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-12345:PC_37v3pAq2oZo7BY4Of
-    """
     line = line.strip()
     if not line or line.startswith("#"):
         return None
@@ -277,13 +237,12 @@ def save_hit(username):
 
 def init_save_file():
     if not os.path.exists(SAVE_FILE):
-        with open(SAVE_FILE, "w", encoding="utf-8") as f:
-            f.write(HEADER + "\n\n")
+        open(SAVE_FILE, "w", encoding="utf-8").close()
 
 
 def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy_count, recent_results, username_source, current_proxy_num, current_proxy_label):
     sys.stdout.write("\033[H")
-    print_ascii()
+    clear_screen()
 
     stat_line("Usernames", username_source, C_INFO)
     if proxy_count:
@@ -353,7 +312,7 @@ def main():
     start_time = time.time()
 
     os.system("cls" if os.name == "nt" else "clear")
-    print_ascii()
+    clear_screen()
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
     if proxy_count:
         print(C_OK + f"  ✔ {proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
