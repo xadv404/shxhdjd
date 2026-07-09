@@ -13,8 +13,8 @@
       --border: #252535;
       --text: #f0f0f5;
       --muted: #8888a0;
-      --accent: #6c5ce7;
-      --green: #00d68f;
+      --recup: #4dabf7;
+      --check: #00d68f;
       --red: #ff6b6b;
       --blue: #4dabf7;
     }
@@ -26,104 +26,82 @@
       min-height: 100dvh;
       padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
     }
-    header {
-      text-align: center;
-      padding: 20px 0 16px;
-    }
-    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    header { text-align: center; padding: 18px 0 8px; }
+    header h1 { font-size: 1.2rem; font-weight: 700; }
     .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 8px;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      background: var(--card);
-      border: 1px solid var(--border);
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 8px; padding: 4px 12px; border-radius: 20px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      background: var(--card); border: 1px solid var(--border);
     }
-    .dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--muted);
-    }
-    .dot.running { background: var(--green); animation: pulse 1.5s infinite; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .dot.running { background: var(--check); animation: pulse 1.5s infinite; }
+    .dot.collect { background: var(--recup); animation: pulse 1.5s infinite; }
+    .dot.check { background: var(--check); animation: pulse 1.5s infinite; }
     .dot.done { background: var(--blue); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin: 16px 0;
-    }
-    .stat-card {
-      background: var(--card);
+    .category {
+      margin: 14px 0;
+      border-radius: 18px;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px;
+      overflow: hidden;
     }
-    .stat-card.wide { grid-column: 1 / -1; }
-    .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat-value { font-size: 2rem; font-weight: 800; margin-top: 4px; letter-spacing: -0.03em; }
-    .stat-value.green { color: var(--green); }
-    .stat-value.accent { color: var(--accent); }
-    .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .cat-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .cat-header.recup { background: rgba(77,171,247,.12); color: var(--recup); }
+    .cat-header.check { background: rgba(0,214,143,.12); color: var(--check); }
+    .cat-phase {
+      font-size: 0.65rem; padding: 2px 8px; border-radius: 10px;
+      background: rgba(255,255,255,.08); text-transform: uppercase;
+    }
+    .cat-body {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+      background: var(--border);
+    }
+    .cat-stat {
+      background: var(--card); padding: 14px 16px;
+    }
+    .cat-stat.wide { grid-column: 1 / -1; }
+    .stat-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+    .stat-value { font-size: 1.75rem; font-weight: 800; margin-top: 2px; letter-spacing: -0.03em; }
+    .stat-value.recup { color: var(--recup); }
+    .stat-value.check { color: var(--check); }
+    .stat-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
 
     .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin: 16px 0;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0;
     }
     .field { grid-column: 1 / -1; }
-    label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    label { font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 4px; }
     input {
-      width: 100%;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      color: var(--text);
-      font-size: 1rem;
+      width: 100%; padding: 12px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: var(--card);
+      color: var(--text); font-size: 1rem;
     }
     button {
-      padding: 16px;
-      border: none;
-      border-radius: 14px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      touch-action: manipulation;
+      padding: 16px; border: none; border-radius: 14px;
+      font-size: 1rem; font-weight: 700; cursor: pointer; touch-action: manipulation;
     }
-    .btn-start { background: var(--green); color: #000; }
+    .btn-start { background: var(--check); color: #000; }
     .btn-stop { background: var(--red); color: #fff; }
     .btn-start:disabled, .btn-stop:disabled { opacity: 0.35; }
 
     .logs {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 12px;
-      margin-top: 16px;
-      max-height: 200px;
-      overflow-y: auto;
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 12px; max-height: 180px; overflow-y: auto;
       font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 0.7rem;
-      line-height: 1.6;
-      color: var(--muted);
+      font-size: 0.68rem; line-height: 1.6; color: var(--muted);
     }
+    .logs .recup { color: var(--recup); }
+    .logs .check { color: var(--check); }
     .logs .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .export-link {
-      display: block;
-      text-align: center;
-      margin-top: 12px;
-      color: var(--blue);
-      font-size: 0.8rem;
-      text-decoration: none;
-      word-break: break-all;
+      display: block; text-align: center; margin-top: 10px;
+      color: var(--blue); font-size: 0.75rem; text-decoration: none; word-break: break-all;
     }
   </style>
 </head>
@@ -133,33 +111,66 @@
     <div class="status-pill">
       <span class="dot" id="dot"></span>
       <span id="status-text">idle</span>
+      · <span id="elapsed">0</span>s
     </div>
   </header>
 
-  <div class="stats">
-    <div class="stat-card">
-      <div class="stat-label">Domains</div>
-      <div class="stat-value" id="domains">0</div>
+  <!-- Récupération -->
+  <div class="category">
+    <div class="cat-header recup">
+      <span>📡 Récupération</span>
+      <span class="cat-phase" id="phase-recup">idle</span>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Valids</div>
-      <div class="stat-value green" id="valids">0</div>
-      <div class="stat-sub" id="hit-rate">0% hit</div>
+    <div class="cat-body">
+      <div class="cat-stat">
+        <div class="stat-label">Collectés</div>
+        <div class="stat-value recup" id="recup-count">0</div>
+      </div>
+      <div class="cat-stat">
+        <div class="stat-label">Débit</div>
+        <div class="stat-value recup" id="recup-rate">0</div>
+        <div class="stat-sub">domain/s</div>
+      </div>
+      <div class="cat-stat wide">
+        <div class="stat-sub">Moyenne <span id="recup-avg">0</span> domain/s · CT logs</div>
+      </div>
     </div>
-    <div class="stat-card wide">
-      <div class="stat-label">Débit</div>
-      <div class="stat-value accent" id="rate">0</div>
-      <div class="stat-sub"><span id="avg-rate">0</span> domain/s avg · <span id="elapsed">0</span>s · <span id="pipeline">—</span></div>
+  </div>
+
+  <!-- Check -->
+  <div class="category">
+    <div class="cat-header check">
+      <span>✓ Check HTTP</span>
+      <span class="cat-phase" id="phase-check">idle</span>
+    </div>
+    <div class="cat-body">
+      <div class="cat-stat">
+        <div class="stat-label">Valids</div>
+        <div class="stat-value check" id="check-valids">0</div>
+        <div class="stat-sub"><span id="check-hit">0</span>% hit</div>
+      </div>
+      <div class="cat-stat">
+        <div class="stat-label">Débit</div>
+        <div class="stat-value check" id="check-rate">0</div>
+        <div class="stat-sub">domain/s</div>
+      </div>
+      <div class="cat-stat wide">
+        <div class="stat-sub">
+          Vérifiés <span id="check-checked">0</span> ·
+          Moy <span id="check-avg">0</span> domain/s ·
+          <span id="pipeline">—</span>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="controls">
     <div class="field">
-      <label>Durée (secondes, 0 = illimité)</label>
+      <label>Durée (s, 0 = ∞)</label>
       <input type="number" id="duration" value="60" min="0" inputmode="numeric">
     </div>
     <div class="field">
-      <label>Objectif valides (0 = illimité)</label>
+      <label>Objectif valides (0 = ∞)</label>
       <input type="number" id="count" value="0" min="0" inputmode="numeric">
     </div>
     <button class="btn-start" id="btn-start" onclick="startGrab()">▶ Start</button>
@@ -182,25 +193,50 @@
       return n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n);
     }
 
+    function logClass(line) {
+      if (line.includes('[RECUP]')) return 'recup';
+      if (line.includes('[CHECK]') || line.includes('[DONE]')) return 'check';
+      return '';
+    }
+
     function updateUI(d) {
-      document.getElementById('domains').textContent = fmt(d.domains);
-      document.getElementById('valids').textContent = fmt(d.valids);
-      document.getElementById('rate').textContent = d.rate + ' domain/s';
-      document.getElementById('avg-rate').textContent = d.avg_rate;
-      document.getElementById('elapsed').textContent = d.elapsed;
-      document.getElementById('hit-rate').textContent = d.hit_rate + '% hit';
+      const r = d.recup || {};
+      const c = d.check || {};
+
+      document.getElementById('recup-count').textContent = fmt(r.collected || 0);
+      document.getElementById('recup-rate').textContent = fmt(r.rate || 0);
+      document.getElementById('recup-avg').textContent = fmt(r.avg || 0);
+
+      document.getElementById('check-valids').textContent = fmt(c.valids || 0);
+      document.getElementById('check-checked').textContent = fmt(c.checked || 0);
+      document.getElementById('check-rate').textContent = fmt(c.rate || 0);
+      document.getElementById('check-avg').textContent = fmt(c.avg || 0);
+      document.getElementById('check-hit').textContent = c.hit_rate || 0;
+
       document.getElementById('pipeline').textContent = d.pipeline || '—';
       document.getElementById('status-text').textContent = d.status;
+      document.getElementById('elapsed').textContent = d.elapsed || 0;
+
+      const phase = d.phase || 'idle';
+      document.getElementById('phase-recup').textContent =
+        phase === 'collect' ? 'en cours' : d.running ? 'actif' : phase;
+      document.getElementById('phase-check').textContent =
+        phase === 'check' ? 'en cours' : (c.valids > 0 ? 'ok' : phase);
 
       const dot = document.getElementById('dot');
-      dot.className = 'dot' + (d.running ? ' running' : d.status === 'done' ? ' done' : '');
+      dot.className = 'dot' + (
+        phase === 'collect' ? ' collect' :
+        phase === 'check' ? ' check' :
+        d.running ? ' running' :
+        d.status === 'done' ? ' done' : ''
+      );
 
       document.getElementById('btn-start').disabled = d.running;
       document.getElementById('btn-stop').disabled = !d.running;
 
       const logs = document.getElementById('logs');
       logs.innerHTML = (d.logs || []).slice(-20).reverse()
-        .map(l => `<div class="line">${l}</div>`).join('');
+        .map(l => `<div class="line ${logClass(l)}">${l}</div>`).join('');
 
       const exp = document.getElementById('export');
       if (d.export_file) {

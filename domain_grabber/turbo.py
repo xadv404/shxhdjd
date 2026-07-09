@@ -47,11 +47,16 @@ class StatusLogger:
         self._start = time.time()
         self._task: asyncio.Task | None = None
 
-    def set(self, domains: int, valids: int) -> None:
-        self.domains = domains
+    def set(self, collected: int, valids: int, phase: str = "check") -> None:
+        self.domains = collected
         self.valids = valids
         if self.panel:
-            self.panel.update(domains, valids)
+            if phase == "collect":
+                self.panel.set_phase("collect")
+                self.panel.update_collect(collected)
+            else:
+                self.panel.set_phase("check")
+                self.panel.update_check(collected, valids)
 
     def _log(self, line: str) -> None:
         print(line, flush=True)
@@ -59,14 +64,24 @@ class StatusLogger:
             self.panel.add_log(line)
 
     def emit(self) -> None:
-        now = time.time()
-        dt = max(now - self._prev_time, 0.001)
-        instant = int((self.valids - self._prev_valids) / dt)
-        avg = int(self.valids / max(now - self._start, 0.001))
-        rate = instant if instant > 0 else avg
-        self._log(f"[INFO] {self.domains} DOMAINS | {self.valids} VALIDS | {rate} domain/s")
-        self._prev_valids = self.valids
-        self._prev_time = now
+        self._log(
+            f"[RECUP] {self.domains} DOMAINS | {self._collect_rate()} domain/s"
+        )
+        self._log(
+            f"[CHECK] {self.valids} VALIDS | {self._check_rate()} domain/s"
+        )
+
+    def _collect_rate(self) -> int:
+        if self.panel:
+            return self.panel.collect_rate
+        elapsed = max(time.time() - self._start, 0.001)
+        return int(self.domains / elapsed)
+
+    def _check_rate(self) -> int:
+        if not self.panel:
+            elapsed = max(time.time() - self._start, 0.001)
+            return int(self.valids / elapsed)
+        return self.panel.check_rate
 
     async def run(self) -> None:
         while True:
@@ -86,7 +101,10 @@ class StatusLogger:
         self.emit()
         elapsed = max(time.time() - self._start, 0.001)
         avg = int(self.valids / elapsed)
-        self._log(f"[INFO] DONE {self.domains} DOMAINS | {self.valids} VALIDS | {avg} domain/s avg")
+        self._log(
+            f"[DONE] RECUP {self.domains} | CHECK {self.valids} | "
+            f"{self._check_rate()} domain/s avg"
+        )
 
 
 async def _collect_batch(
@@ -221,7 +239,7 @@ async def run_pipeline(
         collect_task = start_collect()
 
         while True:
-            if panel.stop_event and panel.stop_event.is_set():
+            if panel and panel.stop_event and panel.stop_event.is_set():
                 break
             if duration and time.time() >= deadline:
                 break
@@ -232,22 +250,24 @@ async def run_pipeline(
             if not batch:
                 break
             collected += len(batch)
-            status.set(collected, verified_count)
+            status.set(collected, verified_count, phase="collect")
             if not logger_started:
                 status.start()
                 logger_started = True
 
-            if panel.stop_event and panel.stop_event.is_set():
+            if panel and panel.stop_event and panel.stop_event.is_set():
                 break
             if duration and time.time() >= deadline:
                 break
 
+            if panel:
+                panel.set_phase("check")
             collect_task = start_collect()
             alive = await verifier.verify_batch(batch)
             await flush_export([r.domain for r in alive])
-            status.set(collected, verified_count)
+            status.set(collected, verified_count, phase="check")
 
-            if panel.stop_event and panel.stop_event.is_set():
+            if panel and panel.stop_event and panel.stop_event.is_set():
                 break
             if duration and time.time() >= deadline:
                 break

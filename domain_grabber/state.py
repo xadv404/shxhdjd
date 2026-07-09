@@ -12,17 +12,27 @@ from typing import Any
 @dataclass
 class PanelState:
     running: bool = False
-    domains: int = 0
-    valids: int = 0
-    rate: int = 0
-    avg_rate: int = 0
-    elapsed: float = 0.0
     status: str = "idle"
+    phase: str = "idle"  # collect | check | idle | done
     pipeline: str = ""
     export_file: str = ""
-    hit_rate: float = 0.0
+    elapsed: float = 0.0
     logs: deque[str] = field(default_factory=lambda: deque(maxlen=50))
+
+    # Récupération (CT)
+    collected: int = 0
+    collect_rate: int = 0
+    collect_avg: int = 0
+
+    # Check (HTTP)
+    checked: int = 0
+    valids: int = 0
+    check_rate: int = 0
+    check_avg: int = 0
+    hit_rate: float = 0.0
+
     _start: float = 0.0
+    _prev_collected: int = 0
     _prev_valids: int = 0
     _prev_time: float = 0.0
     _listeners: list[asyncio.Queue] = field(default_factory=list)
@@ -32,42 +42,71 @@ class PanelState:
     def begin(self, pipeline: str) -> None:
         self.running = True
         self.status = "running"
+        self.phase = "collect"
         self.pipeline = pipeline
-        self.domains = 0
+        self.collected = 0
+        self.collect_rate = 0
+        self.collect_avg = 0
+        self.checked = 0
         self.valids = 0
-        self.rate = 0
-        self.avg_rate = 0
+        self.check_rate = 0
+        self.check_avg = 0
         self.export_file = ""
         self.hit_rate = 0.0
         self._start = time.time()
+        self._prev_collected = 0
         self._prev_valids = 0
         self._prev_time = self._start
         self.stop_event = asyncio.Event()
         self.logs.clear()
+        self._tick()
         self._notify()
 
-    def update(self, domains: int, valids: int) -> None:
-        now = time.time()
-        self.domains = domains
+    def set_phase(self, phase: str) -> None:
+        self.phase = phase
+        self._notify()
+
+    def update_collect(self, collected: int) -> None:
+        self.collected = collected
+        self._tick()
+        self._notify()
+
+    def update_check(self, checked: int, valids: int) -> None:
+        self.checked = checked
         self.valids = valids
+        self.hit_rate = (valids / checked * 100) if checked else 0.0
+        self._tick()
+        self._notify()
+
+    def _tick(self) -> None:
+        now = time.time()
         self.elapsed = now - self._start
         dt = max(now - self._prev_time, 0.001)
-        instant = int((valids - self._prev_valids) / dt)
-        avg = int(valids / max(self.elapsed, 0.001))
-        self.rate = instant if instant > 0 else avg
-        self.avg_rate = avg
-        self.hit_rate = (valids / domains * 100) if domains else 0.0
-        self._prev_valids = valids
-        self._prev_time = now
-        self._notify()
+
+        d_col = self.collected - self._prev_collected
+        d_val = self.valids - self._prev_valids
+        inst_collect = int(d_col / dt) if d_col > 0 else 0
+        inst_check = int(d_val / dt) if d_val > 0 else 0
+
+        self.collect_rate = inst_collect if inst_collect > 0 else int(self.collected / max(self.elapsed, 0.001))
+        self.check_rate = inst_check if inst_check > 0 else int(self.valids / max(self.elapsed, 0.001))
+        self.collect_avg = int(self.collected / max(self.elapsed, 0.001))
+        self.check_avg = int(self.valids / max(self.elapsed, 0.001))
+
+        if d_col > 0 or d_val > 0:
+            self._prev_collected = self.collected
+            self._prev_valids = self.valids
+            self._prev_time = now
 
     def finish(self, export_file: str = "") -> None:
         self.running = False
         self.status = "done"
+        self.phase = "done"
         if export_file:
             self.export_file = export_file
         self.elapsed = max(time.time() - self._start, 0.001)
-        self.avg_rate = int(self.valids / self.elapsed)
+        self.collect_avg = int(self.collected / self.elapsed)
+        self.check_avg = int(self.valids / self.elapsed)
         self.stop_event = None
         self.grab_task = None
         self._notify()
@@ -95,16 +134,30 @@ class PanelState:
     def to_dict(self) -> dict[str, Any]:
         return {
             "running": self.running,
-            "domains": self.domains,
-            "valids": self.valids,
-            "rate": self.rate,
-            "avg_rate": self.avg_rate,
-            "elapsed": int(self.elapsed),
             "status": self.status,
+            "phase": self.phase,
+            "elapsed": int(self.elapsed),
             "pipeline": self.pipeline,
             "export_file": self.export_file,
-            "hit_rate": round(self.hit_rate, 1),
             "logs": list(self.logs),
+            "recup": {
+                "collected": self.collected,
+                "rate": self.collect_rate,
+                "avg": self.collect_avg,
+            },
+            "check": {
+                "checked": self.checked,
+                "valids": self.valids,
+                "rate": self.check_rate,
+                "avg": self.check_avg,
+                "hit_rate": round(self.hit_rate, 1),
+            },
+            # rétrocompat
+            "domains": self.collected,
+            "valids": self.valids,
+            "rate": self.check_rate,
+            "avg_rate": self.check_avg,
+            "hit_rate": round(self.hit_rate, 1),
         }
 
     def _notify(self) -> None:
@@ -123,5 +176,4 @@ class PanelState:
             self.unsubscribe(q)
 
 
-# Singleton global
 STATE = PanelState()
