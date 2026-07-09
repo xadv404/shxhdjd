@@ -34,7 +34,7 @@ def _build_verify_config(cfg: dict[str, Any]) -> VerifyConfig:
 
 
 class StatusLogger:
-    """Log [INFO] DOMAINS | VALIDS | req/s toutes les N secondes."""
+    """Log [INFO] DOMAINS | VALIDS | domain/s toutes les N secondes."""
 
     def __init__(self, interval: float = 3.0) -> None:
         self.interval = interval
