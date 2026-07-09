@@ -7,7 +7,7 @@ import os
 import threading
 from datetime import datetime
 from urllib.parse import quote
-from colorama import Fore, Back, Style, init
+from colorama import Fore, Style, init
 
 init(autoreset=True)
 
@@ -22,6 +22,9 @@ C_OK = Fore.LIGHTGREEN_EX + Style.BRIGHT
 C_BAD = Fore.LIGHTRED_EX + Style.BRIGHT
 C_WARN = Fore.LIGHTYELLOW_EX
 C_PROXY = Fore.LIGHTBLUE_EX
+
+STAT_LABEL_WIDTH = 9
+RECENT_LIMIT = 5
 
 _username_lock = threading.Lock()
 _username_index = 0
@@ -62,10 +65,19 @@ def get_red_gradient(index, total):
 
 
 def stat_line(label, value, value_color=Fore.LIGHTWHITE_EX, raw=False):
+    label_part = f"{C_LABEL}{label:<{STAT_LABEL_WIDTH}}{C_DIM}│ "
     if raw:
-        print(f"  {C_LABEL}{label:<10}{C_DIM}│ {value}{Style.RESET_ALL}")
+        print(f"  {label_part}{value}{Style.RESET_ALL}")
     else:
-        print(f"  {C_LABEL}{label:<10}{C_DIM}│ {value_color}{value}{Style.RESET_ALL}")
+        print(f"  {label_part}{value_color}{value}{Style.RESET_ALL}")
+
+
+def print_divider():
+    print(C_DIM + "  " + "-" * 16 + Style.RESET_ALL)
+
+
+def recent_line(icon, username, status, color):
+    print(f"  {color}{icon} {username:<12} {status}{Style.RESET_ALL}")
 
 
 def print_ascii():
@@ -292,22 +304,20 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
     stat_line("CPM", f"{cpm:.1f}", C_INFO + Style.BRIGHT)
 
     print()
-    print(C_LABEL + "  Recent:" + Style.RESET_ALL)
+    print_divider()
+    print()
+
     if not recent_results:
         print(C_DIM + "  (en attente...)" + Style.RESET_ALL)
-    for username, result in recent_results[-10:]:
+    for username, result in recent_results[-RECENT_LIMIT:]:
         if result == "hit":
-            badge = Back.GREEN + Fore.BLACK + Style.BRIGHT + " VALID " + Style.RESET_ALL
-            print(f"  {C_OK}✔ {username:<14}{badge}")
+            recent_line("✔", username, "VALID", C_OK)
         elif result == "bad":
-            badge = Back.RED + Fore.WHITE + Style.BRIGHT + " INVALID " + Style.RESET_ALL
-            print(f"  {C_BAD}✘ {username:<14}{badge}")
+            recent_line("✘", username, "INVALID", C_BAD)
         elif result == "proxy_error":
-            badge = Back.MAGENTA + Fore.WHITE + Style.BRIGHT + " PROXY " + Style.RESET_ALL
-            print(f"  {Fore.LIGHTMAGENTA_EX}⚠ {username:<14}{badge}")
+            recent_line("⚠", username, "PROXY", Fore.LIGHTMAGENTA_EX)
         else:
-            badge = Back.YELLOW + Fore.BLACK + Style.BRIGHT + f" {result.upper()} " + Style.RESET_ALL
-            print(f"  {C_WARN}• {username:<14}{badge}")
+            recent_line("•", username, result.upper(), C_WARN)
     print(Style.RESET_ALL)
 
 
