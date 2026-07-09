@@ -48,7 +48,6 @@ ASCII_ART = [
     r"   4c Checker By Skid - @Observerinfo3         ",
 ]
 
-# Default proxy scheme when the line has no protocol (http / socks5 / socks4)
 DEFAULT_PROXY_SCHEME = "http"
 
 _proxy_lock = threading.Lock()
