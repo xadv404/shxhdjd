@@ -10,7 +10,7 @@ from typing import Any
 from domain_grabber.filters import FilterConfig
 from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
-from domain_grabber.state import PanelState, STATE
+from domain_grabber.state import PanelState
 from domain_grabber.storage import DomainStore
 from domain_grabber.verify import DEFAULT_RESOLVERS, FastVerifier, VerifyConfig
 
@@ -152,10 +152,15 @@ async def run_pipeline(
         verify_batch_size = min(verify_batch_size, max(300, int(duration * 12)))
 
     tools_msg = verifier.tools.describe()
-    panel.begin(tools_msg)
-    panel.add_log(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}")
-    if tools_msg == "async-fallback":
-        panel.add_log("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx")
+    if panel:
+        panel.begin(tools_msg)
+        panel.add_log(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}")
+        if tools_msg == "async-fallback":
+            panel.add_log("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx")
+    else:
+        print(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}", flush=True)
+        if tools_msg == "async-fallback":
+            print("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx", flush=True)
 
     status = StatusLogger(interval=log_interval, panel=panel)
     collected = 0
@@ -260,10 +265,17 @@ async def run_pipeline(
         if logger_started:
             await status.stop()
         else:
-            panel.add_log("[INFO] DONE 0 DOMAINS | 0 VALIDS | 0 domain/s avg")
+            msg = "[INFO] DONE 0 DOMAINS | 0 VALIDS | 0 domain/s avg"
+            if panel:
+                panel.add_log(msg)
+            else:
+                print(msg, flush=True)
         export_path = str(pipeline.output_file)
-        panel.finish(export_path)
-        panel.add_log(f"[INFO] Export → {export_path}")
+        if panel:
+            panel.finish(export_path)
+            panel.add_log(f"[INFO] Export → {export_path}")
+        else:
+            print(f"[INFO] Export → {export_path}", flush=True)
 
 
 # Alias rétrocompat
