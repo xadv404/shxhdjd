@@ -44,24 +44,27 @@ async def _fetch_entries(
 
 
 def _parse_ct_entry(entry: dict[str, Any]) -> bytes | None:
-    """Extrait le certificat X.509 depuis une entrée CT (Merkle leaf)."""
+    """Extrait le certificat X.509 depuis une entrée CT (Merkle leaf RFC 6962)."""
     leaf_input = entry.get("leaf_input")
     if not leaf_input:
         return None
     try:
         raw = base64.b64decode(leaf_input)
-        # MerkleTreeLeaf: 1 byte version + 4 bytes timestamp + 2 bytes type + cert
-        if len(raw) < 12:
+        if len(raw) < 15:
             return None
         entry_type = int.from_bytes(raw[10:12], "big")
-        cert_data = raw[12:]
-        # x509_entry = 0, precert_entry = 1
+        # x509_entry (0): 3-byte length + DER certificate
+        if entry_type == 0:
+            cert_len = int.from_bytes(raw[12:15], "big")
+            cert_data = raw[15 : 15 + cert_len]
+            return cert_data
+        # precert_entry (1): parse extra_data chain
         if entry_type == 1 and entry.get("extra_data"):
             extra = base64.b64decode(entry["extra_data"])
-            # Precert: chain length (3 bytes) + certs...
-            if len(extra) > 3:
-                cert_data = extra[3:]
-        return cert_data
+            if len(extra) > 6:
+                cert_len = int.from_bytes(extra[3:6], "big")
+                return extra[6 : 6 + cert_len]
+        return None
     except Exception:
         return None
 

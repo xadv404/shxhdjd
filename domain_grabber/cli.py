@@ -326,11 +326,11 @@ async def run_scan_only(cfg: dict[str, Any], input_file: Path) -> None:
 
     console.print(f"[cyan]Scan de {len(domains):,} domaines...[/cyan]")
     findings_file = output_dir / f"findings_{int(time.time())}.jsonl"
-    scanner = VulnScanner(scan_cfg)
 
-    async def on_batch(batch: list) -> None:
+    def on_batch(batch: list) -> None:
         _write_findings(findings_file, batch)
 
+    scanner = VulnScanner(scan_cfg)
     findings = await scanner.scan_many(domains, on_result=on_batch)
     console.print(f"[green]{len(findings)} findings → {findings_file}[/green]")
 
