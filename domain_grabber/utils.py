@@ -47,7 +47,7 @@ def is_infrastructure_noise(domain: str) -> bool:
     if any(part in d for part in ("digicert", "sectigo", "comodoca", "usertrust", "amazontrust")):
         return True
     tld = d.rsplit(".", 1)[-1]
-    if tld in {"crt", "crl", "cer", "pem"}:
+    if tld in {"crt", "crl", "cer", "pem", "dat", "bin", "exe", "dll", "log"}:
         return True
     if d.count(".") == 1 and d.split(".")[0] in {"ocsp", "crl", "crt", "cacerts"}:
         return True

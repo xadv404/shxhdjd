@@ -39,4 +39,5 @@ def test_noise_filter():
 
     assert is_infrastructure_noise("ocsp.sectigo.com")
     assert normalize_domain("crt.sectigo.com") is None
+    assert normalize_domain("stream_index.dat") is None
     assert normalize_domain("example.com") == "example.com"

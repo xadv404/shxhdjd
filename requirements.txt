@@ -4,3 +4,4 @@ rich>=13.7.0
 pyyaml>=6.0
 tldextract>=5.1.0
 aiosqlite>=0.20.0
+cryptography>=42.0.0

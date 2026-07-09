@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
-import re
 from collections.abc import AsyncIterator
 from typing import Any
 
 import aiohttp
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import ExtensionOID, NameOID
 
-from domain_grabber.utils import iter_domains_from_cert_names
-
-_DNS_RE = re.compile(r"([a-zA-Z0-9*][a-zA-Z0-9.*_-]{1,253}\.[a-zA-Z]{2,})")
+from domain_grabber.utils import iter_domains_from_cert_names, normalize_domain
 
 
 async def _get_tree_size(session: aiohttp.ClientSession, log_url: str) -> int:
@@ -44,26 +43,59 @@ async def _fetch_entries(
         return data if isinstance(data, list) else []
 
 
-def _extract_domains_from_entry(entry: dict[str, Any]) -> set[str]:
-    domains: set[str] = set()
+def _parse_ct_entry(entry: dict[str, Any]) -> bytes | None:
+    """Extrait le certificat X.509 depuis une entrée CT (Merkle leaf)."""
     leaf_input = entry.get("leaf_input")
     if not leaf_input:
+        return None
+    try:
+        raw = base64.b64decode(leaf_input)
+        # MerkleTreeLeaf: 1 byte version + 4 bytes timestamp + 2 bytes type + cert
+        if len(raw) < 12:
+            return None
+        entry_type = int.from_bytes(raw[10:12], "big")
+        cert_data = raw[12:]
+        # x509_entry = 0, precert_entry = 1
+        if entry_type == 1 and entry.get("extra_data"):
+            extra = base64.b64decode(entry["extra_data"])
+            # Precert: chain length (3 bytes) + certs...
+            if len(extra) > 3:
+                cert_data = extra[3:]
+        return cert_data
+    except Exception:
+        return None
+
+
+def _extract_domains_from_entry(entry: dict[str, Any]) -> set[str]:
+    """Parse le certificat proprement (CN + SAN) — évite le bruit type stream_index.dat."""
+    domains: set[str] = set()
+    cert_bytes = _parse_ct_entry(entry)
+    if not cert_bytes:
         return domains
 
     try:
-        decoded = base64.b64decode(leaf_input)
-        text = decoded.decode("latin-1", errors="ignore")
-        for match in _DNS_RE.findall(text):
-            if "." in match and not match.startswith("."):
-                domains.update(iter_domains_from_cert_names([match]))
+        cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
+    except Exception:
+        return domains
+
+    try:
+        cn_attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        for attr in cn_attrs:
+            domains.update(iter_domains_from_cert_names([str(attr.value)]))
     except Exception:
         pass
 
-    raw = json.dumps(entry)
-    for match in re.findall(r"DNS:([a-zA-Z0-9.*_-]+)", raw):
-        domains.update(iter_domains_from_cert_names([match]))
+    try:
+        san = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        for name in san.value:
+            if isinstance(name, x509.DNSName):
+                domains.update(iter_domains_from_cert_names([name.value]))
+    except x509.ExtensionNotFound:
+        pass
+    except Exception:
+        pass
 
-    return domains
+    return {d for d in domains if normalize_domain(d)}
 
 
 async def stream_ct_logs(
