@@ -10,8 +10,9 @@ from typing import Any
 from domain_grabber.filters import FilterConfig
 from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
+from domain_grabber.state import PanelState, STATE
 from domain_grabber.storage import DomainStore
-from domain_grabber.verify import DEFAULT_RESOLVERS, FastVerifier, VerifyConfig, VerifiedDomain
+from domain_grabber.verify import DEFAULT_RESOLVERS, FastVerifier, VerifyConfig
 
 
 def _build_verify_config(cfg: dict[str, Any]) -> VerifyConfig:
@@ -36,8 +37,9 @@ def _build_verify_config(cfg: dict[str, Any]) -> VerifyConfig:
 class StatusLogger:
     """Log [INFO] DOMAINS | VALIDS | domain/s toutes les N secondes."""
 
-    def __init__(self, interval: float = 3.0) -> None:
+    def __init__(self, interval: float = 3.0, panel: PanelState | None = None) -> None:
         self.interval = interval
+        self.panel = panel
         self.domains = 0
         self.valids = 0
         self._prev_valids = 0
@@ -48,6 +50,13 @@ class StatusLogger:
     def set(self, domains: int, valids: int) -> None:
         self.domains = domains
         self.valids = valids
+        if self.panel:
+            self.panel.update(domains, valids)
+
+    def _log(self, line: str) -> None:
+        print(line, flush=True)
+        if self.panel:
+            self.panel.add_log(line)
 
     def emit(self) -> None:
         now = time.time()
@@ -55,10 +64,7 @@ class StatusLogger:
         instant = int((self.valids - self._prev_valids) / dt)
         avg = int(self.valids / max(now - self._start, 0.001))
         rate = instant if instant > 0 else avg
-        print(
-            f"[INFO] {self.domains} DOMAINS | {self.valids} VALIDS | {rate} req/s",
-            flush=True,
-        )
+        self._log(f"[INFO] {self.domains} DOMAINS | {self.valids} VALIDS | {rate} domain/s")
         self._prev_valids = self.valids
         self._prev_time = now
 
@@ -80,10 +86,7 @@ class StatusLogger:
         self.emit()
         elapsed = max(time.time() - self._start, 0.001)
         avg = int(self.valids / elapsed)
-        print(
-            f"[INFO] DONE {self.domains} DOMAINS | {self.valids} VALIDS | {avg} req/s avg",
-            flush=True,
-        )
+        self._log(f"[INFO] DONE {self.domains} DOMAINS | {self.valids} VALIDS | {avg} domain/s avg")
 
 
 async def _collect_batch(
@@ -113,7 +116,9 @@ async def run_pipeline(
     cfg: dict[str, Any],
     target: int = 0,
     duration: int = 0,
+    state: PanelState | None = None,
 ) -> None:
+    panel = state
     perf = cfg.get("performance", {})
     output = cfg.get("output", {})
     new_cfg = cfg.get("new_domains", {})
@@ -147,11 +152,12 @@ async def run_pipeline(
         verify_batch_size = min(verify_batch_size, max(300, int(duration * 12)))
 
     tools_msg = verifier.tools.describe()
-    print(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}", flush=True)
+    panel.begin(tools_msg)
+    panel.add_log(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}")
     if tools_msg == "async-fallback":
-        print("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx", flush=True)
+        panel.add_log("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx")
 
-    status = StatusLogger(interval=log_interval)
+    status = StatusLogger(interval=log_interval, panel=panel)
     collected = 0
     verified_count = 0
     start = time.time()
@@ -210,6 +216,8 @@ async def run_pipeline(
         collect_task = start_collect()
 
         while True:
+            if panel.stop_event and panel.stop_event.is_set():
+                break
             if duration and time.time() >= deadline:
                 break
             if target and pipeline.stats.exported >= target:
@@ -224,6 +232,8 @@ async def run_pipeline(
                 status.start()
                 logger_started = True
 
+            if panel.stop_event and panel.stop_event.is_set():
+                break
             if duration and time.time() >= deadline:
                 break
 
@@ -232,6 +242,8 @@ async def run_pipeline(
             await flush_export([r.domain for r in alive])
             status.set(collected, verified_count)
 
+            if panel.stop_event and panel.stop_event.is_set():
+                break
             if duration and time.time() >= deadline:
                 break
 
@@ -248,8 +260,10 @@ async def run_pipeline(
         if logger_started:
             await status.stop()
         else:
-            print(f"[INFO] DONE 0 DOMAINS | 0 VALIDS | 0 req/s avg", flush=True)
-        print(f"[INFO] Export → {pipeline.output_file}", flush=True)
+            panel.add_log("[INFO] DONE 0 DOMAINS | 0 VALIDS | 0 domain/s avg")
+        export_path = str(pipeline.output_file)
+        panel.finish(export_path)
+        panel.add_log(f"[INFO] Export → {export_path}")
 
 
 # Alias rétrocompat

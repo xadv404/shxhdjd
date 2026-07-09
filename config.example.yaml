@@ -11,13 +11,17 @@ new_domains:
   max_age_hours: 24
 
 performance:
-  log_interval: 3          # logs [INFO] toutes les 3s
+  log_interval: 3
   format: txt
   db_commit_interval: 4
   inflight_per_log: 24
   parse_workers: 32
   tail: false
   start_offset: 500000
+
+panel:
+  host: 0.0.0.0
+  port: 8080
 
 verify:
   require_http: true

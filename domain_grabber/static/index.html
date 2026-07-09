@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0b0b12">
+  <title>Domain Grabber</title>
+  <style>
+    :root {
+      --bg: #0b0b12;
+      --card: #14141f;
+      --border: #252535;
+      --text: #f0f0f5;
+      --muted: #8888a0;
+      --accent: #6c5ce7;
+      --green: #00d68f;
+      --red: #ff6b6b;
+      --blue: #4dabf7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    }
+    header {
+      text-align: center;
+      padding: 20px 0 16px;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: var(--card);
+      border: 1px solid var(--border);
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.running { background: var(--green); animation: pulse 1.5s infinite; }
+    .dot.done { background: var(--blue); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .stat-card.wide { grid-column: 1 / -1; }
+    .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 2rem; font-weight: 800; margin-top: 4px; letter-spacing: -0.03em; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.accent { color: var(--accent); }
+    .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 16px 0;
+    }
+    .field { grid-column: 1 / -1; }
+    label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    button {
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .btn-start { background: var(--green); color: #000; }
+    .btn-stop { background: var(--red); color: #fff; }
+    .btn-start:disabled, .btn-stop:disabled { opacity: 0.35; }
+
+    .logs {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      margin-top: 16px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.7rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .logs .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .export-link {
+      display: block;
+      text-align: center;
+      margin-top: 12px;
+      color: var(--blue);
+      font-size: 0.8rem;
+      text-decoration: none;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Domain Grabber</h1>
+    <div class="status-pill">
+      <span class="dot" id="dot"></span>
+      <span id="status-text">idle</span>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Domains</div>
+      <div class="stat-value" id="domains">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Valids</div>
+      <div class="stat-value green" id="valids">0</div>
+      <div class="stat-sub" id="hit-rate">0% hit</div>
+    </div>
+    <div class="stat-card wide">
+      <div class="stat-label">Débit</div>
+      <div class="stat-value accent" id="rate">0</div>
+      <div class="stat-sub"><span id="avg-rate">0</span> domain/s avg · <span id="elapsed">0</span>s · <span id="pipeline">—</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="field">
+      <label>Durée (secondes, 0 = illimité)</label>
+      <input type="number" id="duration" value="60" min="0" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Objectif valides (0 = illimité)</label>
+      <input type="number" id="count" value="0" min="0" inputmode="numeric">
+    </div>
+    <button class="btn-start" id="btn-start" onclick="startGrab()">▶ Start</button>
+    <button class="btn-stop" id="btn-stop" onclick="stopGrab()" disabled>■ Stop</button>
+  </div>
+
+  <div class="logs" id="logs"></div>
+  <a class="export-link" id="export" style="display:none"></a>
+
+  <script>
+    let ws;
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = e => updateUI(JSON.parse(e.data));
+      ws.onclose = () => setTimeout(connect, 2000);
+    }
+
+    function fmt(n) {
+      return n >= 1000 ? (n/1000).toFixed(1) + 'k' : String(n);
+    }
+
+    function updateUI(d) {
+      document.getElementById('domains').textContent = fmt(d.domains);
+      document.getElementById('valids').textContent = fmt(d.valids);
+      document.getElementById('rate').textContent = d.rate + ' domain/s';
+      document.getElementById('avg-rate').textContent = d.avg_rate;
+      document.getElementById('elapsed').textContent = d.elapsed;
+      document.getElementById('hit-rate').textContent = d.hit_rate + '% hit';
+      document.getElementById('pipeline').textContent = d.pipeline || '—';
+      document.getElementById('status-text').textContent = d.status;
+
+      const dot = document.getElementById('dot');
+      dot.className = 'dot' + (d.running ? ' running' : d.status === 'done' ? ' done' : '');
+
+      document.getElementById('btn-start').disabled = d.running;
+      document.getElementById('btn-stop').disabled = !d.running;
+
+      const logs = document.getElementById('logs');
+      logs.innerHTML = (d.logs || []).slice(-20).reverse()
+        .map(l => `<div class="line">${l}</div>`).join('');
+
+      const exp = document.getElementById('export');
+      if (d.export_file) {
+        exp.style.display = 'block';
+        exp.textContent = '→ ' + d.export_file;
+      }
+    }
+
+    async function startGrab() {
+      const duration = parseInt(document.getElementById('duration').value) || 0;
+      const count = parseInt(document.getElementById('count').value) || 0;
+      await fetch('/api/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({duration, count})
+      });
+    }
+
+    async function stopGrab() {
+      await fetch('/api/stop', {method: 'POST'});
+    }
+
+    connect();
+  </script>
+</body>
+</html>

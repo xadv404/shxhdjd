@@ -141,6 +141,10 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("stats", help="Statistiques base domaines")
 
+    panel_p = sub.add_parser("panel", help="Panel web mobile (stats live + start/stop)")
+    panel_p.add_argument("--host", default="0.0.0.0", help="Adresse d'écoute")
+    panel_p.add_argument("--port", type=int, default=8080, help="Port HTTP")
+
     args = parser.parse_args(argv)
     cfg = load_config(Path(args.config))
 
@@ -155,6 +159,11 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(run_scan_only(cfg, Path(args.input)))
     elif cmd == "stats":
         asyncio.run(run_stats(cfg))
+    elif cmd == "panel":
+        from domain_grabber.panel import run_panel
+        host = getattr(args, "host", "0.0.0.0")
+        port = getattr(args, "port", 8080) or int(cfg.get("panel", {}).get("port", 8080))
+        asyncio.run(run_panel(cfg, host=host, port=port))
     else:
         asyncio.run(
             run_grabber(
