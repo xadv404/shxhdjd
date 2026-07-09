@@ -24,6 +24,7 @@ C_PROXY = Fore.LIGHTBLUE_EX
 
 STAT_LABEL_WIDTH = 9
 RECENT_LIMIT = 5
+HITS_LIMIT = 10
 
 _username_lock = threading.Lock()
 _username_index = 0
@@ -264,6 +265,16 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
     print()
     print_divider()
     print()
+    print(C_OK + "  Hits" + Style.RESET_ALL)
+    if not hit_list:
+        print(C_DIM + "  (aucun pour l'instant)" + Style.RESET_ALL)
+    else:
+        for username in hit_list[-HITS_LIMIT:]:
+            recent_line("✔", username, "VALID", C_OK)
+
+    print()
+    print_divider()
+    print()
 
     if not recent_results:
         print(C_DIM + "  (en attente...)" + Style.RESET_ALL)
@@ -311,7 +322,6 @@ def main():
     recent_results = []
     start_time = time.time()
 
-    os.system("cls" if os.name == "nt" else "clear")
     clear_screen()
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
     if proxy_count:
