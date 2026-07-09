@@ -62,16 +62,6 @@ def get_red_gradient(index, total):
     return f"\033[38;2;{r};{g};{b}m"
 
 
-def print_separator(title=None):
-    line = "─" * 46
-    if title:
-        print(C_ACCENT + f"  ╔{line}╗")
-        print(C_ACCENT + f"  ║  {title:<44}║")
-        print(C_ACCENT + f"  ╚{line}╝" + Style.RESET_ALL)
-    else:
-        print(C_DIM + f"  {line}" + Style.RESET_ALL)
-
-
 def stat_line(label, value, value_color=Fore.LIGHTWHITE_EX, raw=False):
     if raw:
         print(f"  {C_LABEL}{label:<10}{C_DIM}│ {value}{Style.RESET_ALL}")
@@ -285,7 +275,6 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
     sys.stdout.write("\033[H")
     print_ascii()
 
-    print_separator("CHECKER")
     stat_line("Usernames", username_source, C_INFO)
     if proxy_count:
         proxy_text = (
@@ -295,7 +284,6 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
         stat_line("Proxy", proxy_text, raw=True)
 
     print()
-    print_separator("STATS")
     stat_line("Checked", str(generated), Fore.LIGHTWHITE_EX)
     stat_line("Valid", str(hits), C_OK)
     stat_line("Invalid", str(bad), C_BAD)
@@ -305,7 +293,7 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, hit_list, proxy
     stat_line("CPM", f"{cpm:.1f}", C_INFO + Style.BRIGHT)
 
     print()
-    print_separator("RECENT")
+    print(C_LABEL + "  Recent:" + Style.RESET_ALL)
     if not recent_results:
         print(C_DIM + "  (en attente...)" + Style.RESET_ALL)
     for username, result in recent_results[-10:]:
@@ -358,7 +346,6 @@ def main():
 
     os.system("cls" if os.name == "nt" else "clear")
     print_ascii()
-    print_separator("DEMARRAGE")
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
     if proxy_count:
         print(C_OK + f"  ✔ {proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
