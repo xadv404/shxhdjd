@@ -89,33 +89,63 @@ class DomainPipeline:
         self._fh.flush()
         self.stats.exported += 1
 
+    def process_batch(
+        self,
+        domains: list[str],
+        source: str,
+        metadata: dict[str, Any] | None = None,
+        flush: bool = True,
+    ) -> list[str]:
+        """Traite un lot de domaines. Retourne les domaines exportés."""
+        exported: list[str] = []
+        lines: list[str] = []
+        meta = metadata or {}
+        now = time.time()
+
+        for domain in domains:
+            self.stats.received += 1
+            normalized = normalize_domain(domain)
+            if not normalized:
+                continue
+            self.stats.normalized += 1
+
+            if self.deduplicate:
+                if normalized in self._seen:
+                    self.stats.duplicates += 1
+                    continue
+                self._seen.add(normalized)
+
+            ok, reasons = self.vuln_filter.accept(normalized)
+            if not ok:
+                self.stats.filtered += 1
+                continue
+
+            if self.output_format == "jsonl":
+                lines.append(
+                    json.dumps(
+                        {
+                            "domain": normalized,
+                            "source": source,
+                            "reasons": reasons,
+                            "metadata": meta,
+                            "collected_at": now,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                lines.append(normalized)
+            exported.append(normalized)
+            self.stats.exported += 1
+
+        if lines:
+            self._fh.write("\n".join(lines) + "\n")
+            if flush:
+                self._fh.flush()
+        return exported
+
     def process(self, domain: str, source: str, metadata: dict[str, Any] | None = None) -> bool:
-        self.stats.received += 1
-        normalized = normalize_domain(domain)
-        if not normalized:
-            return False
-        self.stats.normalized += 1
-
-        if self.deduplicate:
-            if normalized in self._seen:
-                self.stats.duplicates += 1
-                return False
-            self._seen.add(normalized)
-
-        ok, reasons = self.vuln_filter.accept(normalized)
-        if not ok:
-            self.stats.filtered += 1
-            return False
-
-        self._export(
-            DomainRecord(
-                domain=normalized,
-                source=source,
-                reasons=reasons,
-                metadata=metadata or {},
-            )
-        )
-        return True
+        return bool(self.process_batch([domain], source, metadata))
 
     def target_reached(self) -> bool:
         return self.target_count > 0 and self.stats.exported >= self.target_count

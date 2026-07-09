@@ -33,6 +33,7 @@ from domain_grabber.sources.ct_logs import stream_ct_logs
 from domain_grabber.sources.rapid7_fdns import stream_rapid7_fdns
 from domain_grabber.sources.zone_files import stream_zone_files
 from domain_grabber.storage import DomainStore
+from domain_grabber.turbo import run_turbo_grabber
 from domain_grabber.utils import normalize_domain
 
 console = Console()
@@ -122,7 +123,11 @@ async def _scan_batch(
     return total
 
 
-async def run_grabber(cfg: dict[str, Any], target: int = 0, duration: int = 0) -> None:
+async def run_grabber(cfg: dict[str, Any], target: int = 0, duration: int = 0, turbo: bool = False) -> None:
+    if turbo or cfg.get("performance", {}).get("turbo", False):
+        await run_turbo_grabber(cfg, target=target, duration=duration)
+        return
+
     output = cfg.get("output", {})
     new_cfg = cfg.get("new_domains", {})
     sources_cfg = cfg.get("sources", {})
@@ -360,6 +365,7 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("-n", "--count", type=int, default=0, help="Domaines à collecter (0=illimité)")
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
         p.add_argument("--no-scan", action="store_true", help="Collecter sans scanner")
+        p.add_argument("--turbo", action="store_true", help="Mode haute performance (2-3k dom/s)")
 
     scan_p = sub.add_parser("scan", help="Scanner un fichier de domaines")
     scan_p.add_argument("-i", "--input", required=True, help="Fichier domains (txt ou jsonl)")
@@ -388,6 +394,7 @@ def main(argv: list[str] | None = None) -> None:
                 cfg,
                 target=getattr(args, "count", 0) or 0,
                 duration=getattr(args, "time", 0) or 0,
+                turbo=getattr(args, "turbo", False),
             )
         )
 

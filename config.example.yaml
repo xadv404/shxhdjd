@@ -9,27 +9,35 @@ output:
 new_domains:
   enabled: true
   database: ./data/domains.db
-  max_age_hours: 24        # considéré "nouveau" si cert CT < 24h ou first_seen récent
+  max_age_hours: 24
+
+# Mode haute performance — cible 2-3k domaines/s
+performance:
+  turbo: false
+  format: txt              # txt plus rapide que jsonl
+  batch_write: 2000
+  flush_interval: 0.25
+  db_commit_interval: 4
+  inflight_per_log: 24
+  parse_workers: 32
+  tail: false
+  start_offset: 500000
 
 sources:
   certstream:
-    enabled: true
-    url: wss://certstream.calidog.io/domains-only
+    enabled: false           # désactivé en turbo (trop lent seul)
 
   crtsh:
-    enabled: true
-    query: "%.com"
-    poll_interval: 120
-    max_age_hours: 24
+    enabled: false           # désactivé en turbo (rate-limited)
 
   ct_logs:
     enabled: true
-    tail: true
-    logs:
-      - https://ct.googleapis.com/logs/us1/argon2025h2
-      - https://ct.googleapis.com/logs/us1/xenon2025h2
-    batch_size: 512
-    workers: 8
+    discover: true            # auto-détection logs CT Google actifs
+    tail: false               # false = max débit sur fenêtre récente
+    start_offset: 500000
+    batch_size: 32
+    inflight_per_log: 24
+    parse_workers: 32
 
   commoncrawl:
     enabled: false
@@ -46,7 +54,7 @@ sources:
     directory: ./rapid7_data
 
 scanner:
-  enabled: true
+  enabled: false           # désactivé par défaut (scan = goulot d'étranglement)
   concurrency: 50
   timeout: 10
   # Détection safe par défaut (pas d'exploit RCE/XXE actif)
