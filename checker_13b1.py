@@ -13,6 +13,7 @@ init(autoreset=True)
 
 SAVE_FILE = "save.txt"
 PROXY_FILE = "proxies.txt"
+WEBHOOK_FILE = "webhook.txt"
 
 C_LABEL = Fore.WHITE + Style.BRIGHT
 C_DIM = Fore.LIGHTBLACK_EX
@@ -217,6 +218,39 @@ def check_username(username, proxy=None):
         return "error"
 
 
+def load_webhook():
+    if not os.path.exists(WEBHOOK_FILE):
+        return None
+    with open(WEBHOOK_FILE, "r", encoding="utf-8") as f:
+        url = f.read().strip()
+    if url and url.startswith("https://"):
+        return url
+    return None
+
+
+def send_webhook_hit(webhook_url, username):
+    try:
+        payload = {
+            "embeds": [
+                {
+                    "title": "Username disponible",
+                    "description": f"`{username}`",
+                    "color": 5763719,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            ]
+        }
+        requests.post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        log_error(username, e)
+
+
+def notify_hit(webhook_url, username):
+    if not webhook_url:
+        return
+    threading.Thread(target=send_webhook_hit, args=(webhook_url, username), daemon=True).start()
+
+
 def save_hit(username):
     with open(SAVE_FILE, "a", encoding="utf-8") as f:
         f.write(username + "\n")
@@ -277,6 +311,7 @@ def main():
 
     _proxies = load_proxies(proxy_file)
     proxy_count = len(_proxies)
+    webhook_url = load_webhook()
 
     init_save_file()
     generated = 0
@@ -293,6 +328,10 @@ def main():
         print(C_OK + f"  ✔ {proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
     else:
         print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_file} introuvable (mode direct)")
+    if webhook_url:
+        print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{WEBHOOK_FILE}")
+    else:
+        print(C_WARN + f"  ⚠ Pas de webhook" + C_DIM + f"      ←  {WEBHOOK_FILE} introuvable")
     print()
     print(C_DIM + "  Demarrage dans 1.5s..." + Style.RESET_ALL)
     time.sleep(1.5)
@@ -325,6 +364,7 @@ def main():
         if result == "hit":
             hits += 1
             save_hit(username)
+            notify_hit(webhook_url, username)
         elif result == "bad":
             bad += 1
         else:
