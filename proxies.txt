@@ -1,15 +1,1 @@
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-47844595:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-87253496:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-54286132:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-99544452:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-93983631:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-19771497:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-35447294:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-74393497:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-25851627:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-29972542:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-72434463:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-78799286:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-33417582:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-88722686:PC_37v3pAq2oZo7BY4Of
-proxy-us.proxy-cheap.com:5959:pcBqj4yHMv-res-any-sid-85325448:PC_37v3pAq2oZo7BY4Of
+http://bpuser-dCNEeLEO:SKioubriwkHIQthVgJGa:residential.bpproxy.at:1000

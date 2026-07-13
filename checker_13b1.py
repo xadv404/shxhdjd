@@ -107,20 +107,27 @@ def format_proxy(line, default_scheme=DEFAULT_PROXY_SCHEME):
     if not line or line.startswith("#"):
         return None
 
+    scheme = default_scheme
     if "://" in line:
-        url = line
-    elif "@" in line:
-        url = f"{default_scheme}://{line}"
+        scheme, line = line.split("://", 1)
+
+    if "@" in line:
+        url = f"{scheme}://{line}"
     else:
         parts = line.rsplit(":", 3)
         if len(parts) == 4:
-            host, port, user, password = parts
+            if parts[1].isdigit():
+                host, port, user, password = parts
+            elif parts[3].isdigit():
+                user, password, host, port = parts
+            else:
+                return None
             user = quote(user, safe="")
             password = quote(password, safe="")
-            url = f"{default_scheme}://{user}:{password}@{host}:{port}"
-        elif len(parts) == 2:
+            url = f"{scheme}://{user}:{password}@{host}:{port}"
+        elif len(parts) == 2 and parts[1].isdigit():
             host, port = parts
-            url = f"{default_scheme}://{host}:{port}"
+            url = f"{scheme}://{host}:{port}"
         else:
             return None
 
