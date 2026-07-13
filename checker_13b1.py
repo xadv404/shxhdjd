@@ -165,14 +165,13 @@ def get_next_proxy():
     return proxy, idx + 1
 
 
-def load_threads():
-    if not os.path.exists(THREADS_FILE):
-        return DEFAULT_THREADS
+def ask_threads():
     try:
-        with open(THREADS_FILE, "r", encoding="utf-8") as f:
-            value = int(f.read().strip())
-        return max(1, min(value, MAX_THREADS))
-    except (ValueError, OSError):
+        value = input(C_INFO + f"  Nombre de threads (defaut {DEFAULT_THREADS}): " + Style.RESET_ALL).strip()
+        if not value:
+            return DEFAULT_THREADS
+        return max(1, min(int(value), MAX_THREADS))
+    except (ValueError, EOFError):
         return DEFAULT_THREADS
 
 
@@ -403,7 +402,7 @@ def main():
 
     _proxies = load_proxies(proxy_file)
     _proxy_count = len(_proxies)
-    _thread_count = load_threads()
+    _thread_count = ask_threads()
     webhook_url = load_webhook()
 
     init_save_file()
@@ -423,7 +422,7 @@ def main():
         print(C_OK + f"  ✔ {_proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
     else:
         print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_file} introuvable (mode direct)")
-    print(C_OK + f"  ✔ {_thread_count} threads" + C_DIM + f"    ←  {C_INFO}{THREADS_FILE}")
+    print(C_OK + f"  ✔ {_thread_count} threads")
     if webhook_url:
         print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{WEBHOOK_FILE}")
     else:
