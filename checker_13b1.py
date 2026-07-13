@@ -16,6 +16,8 @@ PROXY_FILE = "proxies.txt"
 WEBHOOK_FILE = "webhook.txt"
 DEFAULT_THREADS = 5
 MAX_THREADS = 50
+DEFAULT_RETRIES = 3
+MAX_RETRIES = 20
 
 C_LABEL = Fore.WHITE + Style.BRIGHT
 C_DIM = Fore.LIGHTBLACK_EX
@@ -175,6 +177,16 @@ def ask_threads():
         return DEFAULT_THREADS
 
 
+def ask_retries():
+    try:
+        value = input(C_INFO + f"  Nombre de retry (defaut {DEFAULT_RETRIES}): " + Style.RESET_ALL).strip()
+        if not value:
+            return DEFAULT_RETRIES
+        return max(0, min(int(value), MAX_RETRIES))
+    except (ValueError, EOFError):
+        return DEFAULT_RETRIES
+
+
 def log_error(username, e, proxy=None):
     with _file_lock:
         with open("errors-logs.txt", "a", encoding="utf-8") as f:
@@ -250,8 +262,9 @@ def save_hit(username):
 
 def run_check(usernames, webhook_url):
     username = get_next_username(usernames)
+    result = "error"
 
-    while True:
+    for attempt in range(_retry_count + 1):
         if _proxies:
             proxy, _ = get_next_proxy()
         else:
@@ -259,19 +272,20 @@ def run_check(usernames, webhook_url):
 
         result = check_username(username, proxy=proxy)
 
-        if result == "ratelimit":
-            if _proxies:
-                time.sleep(0.5)
-                continue
-            time.sleep(2)
-            continue
+        if result in ("hit", "bad"):
+            break
 
         if result == "proxy_error" and _proxies:
             with _stats_lock:
                 _stats["proxy_errors"] += 1
-            continue
 
-        break
+        if attempt < _retry_count:
+            if result == "ratelimit":
+                time.sleep(0.5 if _proxies else 2)
+            else:
+                time.sleep(0.5)
+        elif result not in ("hit", "bad"):
+            result = "error"
 
     with _stats_lock:
         _stats["generated"] += 1
@@ -304,13 +318,14 @@ def refresh_display():
         cpm = (generated / elapsed) * 60 if elapsed > 0 else 0
         print_stats(
             generated, hits, bad, errors, proxy_errors, cpm,
-            _proxy_count, recent_results, _thread_count,
+            _proxy_count, recent_results, _thread_count, _retry_count,
         )
 
 
 _stats = {}
 _proxy_count = 0
 _thread_count = DEFAULT_THREADS
+_retry_count = DEFAULT_RETRIES
 
 
 def load_webhook():
@@ -351,11 +366,12 @@ def init_save_file():
         open(SAVE_FILE, "w", encoding="utf-8").close()
 
 
-def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results, thread_count):
+def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results, thread_count, retry_count):
     sys.stdout.write("\033[H")
     clear_screen()
 
     stat_line("Threads", str(thread_count), C_INFO)
+    stat_line("Retries", str(retry_count), C_INFO)
     stat_line("Checked", str(generated), Fore.LIGHTWHITE_EX)
     stat_line("Valid", str(hits), C_OK)
     stat_line("Invalid", str(bad), C_BAD)
@@ -384,7 +400,7 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, re
 
 
 def main():
-    global _proxies, _stats, _proxy_count, _thread_count
+    global _proxies, _stats, _proxy_count, _thread_count, _retry_count
 
     username_file = pick_username_file()
     if not username_file:
@@ -403,6 +419,7 @@ def main():
     _proxies = load_proxies(proxy_file)
     _proxy_count = len(_proxies)
     _thread_count = ask_threads()
+    _retry_count = ask_retries()
     webhook_url = load_webhook()
 
     init_save_file()
@@ -423,6 +440,7 @@ def main():
     else:
         print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_file} introuvable (mode direct)")
     print(C_OK + f"  ✔ {_thread_count} threads")
+    print(C_OK + f"  ✔ {_retry_count} retry")
     if webhook_url:
         print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{WEBHOOK_FILE}")
     else:
