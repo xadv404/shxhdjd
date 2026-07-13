@@ -14,7 +14,6 @@ init(autoreset=True)
 SAVE_FILE = "save.txt"
 PROXY_FILE = "proxies.txt"
 WEBHOOK_FILE = "webhook.txt"
-THREADS_FILE = "threads.txt"
 DEFAULT_THREADS = 5
 MAX_THREADS = 50
 
