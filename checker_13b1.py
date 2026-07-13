@@ -14,6 +14,9 @@ init(autoreset=True)
 SAVE_FILE = "save.txt"
 PROXY_FILE = "proxies.txt"
 WEBHOOK_FILE = "webhook.txt"
+THREADS_FILE = "threads.txt"
+DEFAULT_THREADS = 5
+MAX_THREADS = 50
 
 C_LABEL = Fore.WHITE + Style.BRIGHT
 C_DIM = Fore.LIGHTBLACK_EX
@@ -34,6 +37,10 @@ DEFAULT_PROXY_SCHEME = "http"
 _proxy_lock = threading.Lock()
 _proxy_index = 0
 _proxies = []
+
+_stats_lock = threading.Lock()
+_display_lock = threading.Lock()
+_file_lock = threading.Lock()
 
 
 def clear_screen():
@@ -159,13 +166,25 @@ def get_next_proxy():
     return proxy, idx + 1
 
 
+def load_threads():
+    if not os.path.exists(THREADS_FILE):
+        return DEFAULT_THREADS
+    try:
+        with open(THREADS_FILE, "r", encoding="utf-8") as f:
+            value = int(f.read().strip())
+        return max(1, min(value, MAX_THREADS))
+    except (ValueError, OSError):
+        return DEFAULT_THREADS
+
+
 def log_error(username, e, proxy=None):
-    with open("errors-logs.txt", "a", encoding="utf-8") as f:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        proxy_info = ""
-        if proxy:
-            proxy_info = f" | proxy={proxy.get('http', '')}"
-        f.write(f"[{ts}] username={username}{proxy_info} | {type(e).__name__}: {e}\n")
+    with _file_lock:
+        with open("errors-logs.txt", "a", encoding="utf-8") as f:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            proxy_info = ""
+            if proxy:
+                proxy_info = f" | proxy={proxy.get('http', '')}"
+            f.write(f"[{ts}] username={username}{proxy_info} | {type(e).__name__}: {e}\n")
 
 
 def check_username(username, proxy=None):
@@ -225,6 +244,77 @@ def check_username(username, proxy=None):
         return "error"
 
 
+def save_hit(username):
+    with _file_lock:
+        with open(SAVE_FILE, "a", encoding="utf-8") as f:
+            f.write(username + "\n")
+
+
+def run_check(usernames, webhook_url):
+    username = get_next_username(usernames)
+
+    while True:
+        if _proxies:
+            proxy, _ = get_next_proxy()
+        else:
+            proxy = None
+
+        result = check_username(username, proxy=proxy)
+
+        if result == "ratelimit":
+            if _proxies:
+                time.sleep(0.5)
+                continue
+            time.sleep(2)
+            continue
+
+        if result == "proxy_error" and _proxies:
+            with _stats_lock:
+                _stats["proxy_errors"] += 1
+            continue
+
+        break
+
+    with _stats_lock:
+        _stats["generated"] += 1
+        if result == "hit":
+            _stats["hits"] += 1
+            save_hit(username)
+            notify_hit(webhook_url, username)
+        elif result == "bad":
+            _stats["bad"] += 1
+        else:
+            _stats["errors"] += 1
+        _stats["recent_results"].append((username, result))
+
+
+def worker(usernames, webhook_url):
+    while True:
+        run_check(usernames, webhook_url)
+
+
+def refresh_display():
+    with _display_lock:
+        with _stats_lock:
+            elapsed = time.time() - _stats["start_time"]
+            generated = _stats["generated"]
+            hits = _stats["hits"]
+            bad = _stats["bad"]
+            errors = _stats["errors"]
+            proxy_errors = _stats["proxy_errors"]
+            recent_results = list(_stats["recent_results"])
+        cpm = (generated / elapsed) * 60 if elapsed > 0 else 0
+        print_stats(
+            generated, hits, bad, errors, proxy_errors, cpm,
+            _proxy_count, recent_results, _thread_count,
+        )
+
+
+_stats = {}
+_proxy_count = 0
+_thread_count = DEFAULT_THREADS
+
+
 def load_webhook():
     if not os.path.exists(WEBHOOK_FILE):
         return None
@@ -258,20 +348,16 @@ def notify_hit(webhook_url, username):
     threading.Thread(target=send_webhook_hit, args=(webhook_url, username), daemon=True).start()
 
 
-def save_hit(username):
-    with open(SAVE_FILE, "a", encoding="utf-8") as f:
-        f.write(username + "\n")
-
-
 def init_save_file():
     if not os.path.exists(SAVE_FILE):
         open(SAVE_FILE, "w", encoding="utf-8").close()
 
 
-def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results):
+def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results, thread_count):
     sys.stdout.write("\033[H")
     clear_screen()
 
+    stat_line("Threads", str(thread_count), C_INFO)
     stat_line("Checked", str(generated), Fore.LIGHTWHITE_EX)
     stat_line("Valid", str(hits), C_OK)
     stat_line("Invalid", str(bad), C_BAD)
@@ -300,7 +386,7 @@ def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, re
 
 
 def main():
-    global _proxies
+    global _proxies, _stats, _proxy_count, _thread_count
 
     username_file = pick_username_file()
     if not username_file:
@@ -317,24 +403,28 @@ def main():
         proxy_file = sys.argv[1]
 
     _proxies = load_proxies(proxy_file)
-    proxy_count = len(_proxies)
+    _proxy_count = len(_proxies)
+    _thread_count = load_threads()
     webhook_url = load_webhook()
 
     init_save_file()
-    generated = 0
-    hits = 0
-    bad = 0
-    errors = 0
-    proxy_errors = 0
-    recent_results = []
-    start_time = time.time()
+    _stats = {
+        "generated": 0,
+        "hits": 0,
+        "bad": 0,
+        "errors": 0,
+        "proxy_errors": 0,
+        "recent_results": [],
+        "start_time": time.time(),
+    }
 
     clear_screen()
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
-    if proxy_count:
-        print(C_OK + f"  ✔ {proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
+    if _proxy_count:
+        print(C_OK + f"  ✔ {_proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
     else:
         print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_file} introuvable (mode direct)")
+    print(C_OK + f"  ✔ {_thread_count} threads" + C_DIM + f"    ←  {C_INFO}{THREADS_FILE}")
     if webhook_url:
         print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{WEBHOOK_FILE}")
     else:
@@ -343,49 +433,13 @@ def main():
     print(C_DIM + "  Demarrage dans 1.5s..." + Style.RESET_ALL)
     time.sleep(1.5)
 
+    for _ in range(_thread_count):
+        t = threading.Thread(target=worker, args=(usernames, webhook_url), daemon=True)
+        t.start()
+
     while True:
-        username = get_next_username(usernames)
-
-        while True:
-            if _proxies:
-                proxy, _ = get_next_proxy()
-            else:
-                proxy = None
-
-            result = check_username(username, proxy=proxy)
-
-            if result == "ratelimit":
-                if _proxies:
-                    continue
-                time.sleep(2)
-                continue
-
-            if result == "proxy_error" and _proxies:
-                proxy_errors += 1
-                continue
-
-            break
-
-        generated += 1
-
-        if result == "hit":
-            hits += 1
-            save_hit(username)
-            notify_hit(webhook_url, username)
-        elif result == "bad":
-            bad += 1
-        else:
-            errors += 1
-
-        recent_results.append((username, result))
-
-        elapsed = time.time() - start_time
-        cpm = (generated / elapsed) * 60 if elapsed > 0 else 0
-
-        print_stats(
-            generated, hits, bad, errors, proxy_errors, cpm,
-            proxy_count, recent_results,
-        )
+        time.sleep(0.2)
+        refresh_display()
 
 
 if __name__ == "__main__":
