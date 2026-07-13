@@ -11,9 +11,12 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) or os.getcwd()
+
 SAVE_FILE = "save.txt"
 PROXY_FILE = "proxies.txt"
 WEBHOOK_FILE = "webhook.txt"
+ERROR_LOG_FILE = "errors-logs.txt"
 DEFAULT_THREADS = 5
 MAX_THREADS = 50
 DEFAULT_RETRIES = 3
@@ -42,6 +45,10 @@ _proxies = []
 _stats_lock = threading.Lock()
 _display_lock = threading.Lock()
 _file_lock = threading.Lock()
+
+
+def data_path(filename):
+    return os.path.join(BASE_DIR, filename)
 
 
 def clear_screen():
@@ -142,7 +149,12 @@ def format_proxy(line, default_scheme=DEFAULT_PROXY_SCHEME):
     return {"http": url, "https": url}
 
 
-def load_proxies(proxy_file=PROXY_FILE, default_scheme=DEFAULT_PROXY_SCHEME):
+def load_proxies(proxy_file=None, default_scheme=DEFAULT_PROXY_SCHEME):
+    if proxy_file is None:
+        proxy_file = data_path(PROXY_FILE)
+    elif not os.path.isabs(proxy_file):
+        proxy_file = data_path(proxy_file)
+
     if not os.path.exists(proxy_file):
         return []
 
@@ -189,7 +201,7 @@ def ask_retries():
 
 def log_error(username, e, proxy=None):
     with _file_lock:
-        with open("errors-logs.txt", "a", encoding="utf-8") as f:
+        with open(data_path(ERROR_LOG_FILE), "a", encoding="utf-8") as f:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             proxy_info = ""
             if proxy:
@@ -256,7 +268,7 @@ def check_username(username, proxy=None):
 
 def save_hit(username):
     with _file_lock:
-        with open(SAVE_FILE, "a", encoding="utf-8") as f:
+        with open(data_path(SAVE_FILE), "a", encoding="utf-8") as f:
             f.write(username + "\n")
 
 
@@ -328,14 +340,33 @@ _thread_count = DEFAULT_THREADS
 _retry_count = DEFAULT_RETRIES
 
 
-def load_webhook():
-    if not os.path.exists(WEBHOOK_FILE):
+def normalize_webhook_url(raw):
+    url = raw.strip().strip('"').strip("'")
+    if not url or url.startswith("#"):
         return None
-    with open(WEBHOOK_FILE, "r", encoding="utf-8") as f:
-        url = f.read().strip()
-    if url and url.startswith("https://"):
-        return url
-    return None
+    if url.startswith("discord.com/") or url.startswith("www.discord.com/"):
+        url = "https://" + url
+    if not url.startswith("http://") and not url.startswith("https://"):
+        return None
+    if "discord.com/api/webhooks/" not in url:
+        return None
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+    return url
+
+
+def load_webhook():
+    path = data_path(WEBHOOK_FILE)
+    if not os.path.exists(path):
+        return None, "absent", path
+
+    with open(path, "r", encoding="utf-8-sig") as f:
+        for line in f:
+            url = normalize_webhook_url(line)
+            if url:
+                return url, None, path
+
+    return None, "invalid", path
 
 
 def send_webhook_hit(webhook_url, username):
@@ -362,8 +393,9 @@ def notify_hit(webhook_url, username):
 
 
 def init_save_file():
-    if not os.path.exists(SAVE_FILE):
-        open(SAVE_FILE, "w", encoding="utf-8").close()
+    path = data_path(SAVE_FILE)
+    if not os.path.exists(path):
+        open(path, "w", encoding="utf-8").close()
 
 
 def print_stats(generated, hits, bad, errors, proxy_errors, cpm, proxy_count, recent_results, thread_count, retry_count):
@@ -418,9 +450,10 @@ def main():
 
     _proxies = load_proxies(proxy_file)
     _proxy_count = len(_proxies)
+    proxy_path = data_path(proxy_file) if not os.path.isabs(proxy_file) else proxy_file
     _thread_count = ask_threads()
     _retry_count = ask_retries()
-    webhook_url = load_webhook()
+    webhook_url, webhook_status, webhook_path = load_webhook()
 
     init_save_file()
     _stats = {
@@ -436,15 +469,17 @@ def main():
     clear_screen()
     print(C_OK + f"  ✔ {len(usernames)} usernames" + C_DIM + f"  ←  {C_INFO}{os.path.basename(username_file)}")
     if _proxy_count:
-        print(C_OK + f"  ✔ {_proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_file}")
+        print(C_OK + f"  ✔ {_proxy_count} proxies" + C_DIM + f"     ←  {C_PROXY}{proxy_path}")
     else:
-        print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_file} introuvable (mode direct)")
+        print(C_WARN + f"  ⚠ Aucune proxy" + C_DIM + f"        ←  {proxy_path} introuvable (mode direct)")
     print(C_OK + f"  ✔ {_thread_count} threads")
     print(C_OK + f"  ✔ {_retry_count} retry")
     if webhook_url:
-        print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{WEBHOOK_FILE}")
+        print(C_OK + f"  ✔ Webhook actif" + C_DIM + f"     ←  {C_INFO}{webhook_path}")
+    elif webhook_status == "invalid":
+        print(C_WARN + f"  ⚠ Webhook invalide" + C_DIM + f"  ←  {webhook_path}")
     else:
-        print(C_WARN + f"  ⚠ Pas de webhook" + C_DIM + f"      ←  {WEBHOOK_FILE} introuvable")
+        print(C_WARN + f"  ⚠ Pas de webhook" + C_DIM + f"      ←  {webhook_path}")
     print()
     print(C_DIM + "  Demarrage dans 1.5s..." + Style.RESET_ALL)
     time.sleep(1.5)
