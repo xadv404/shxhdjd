@@ -131,9 +131,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("-c", "--config", default="config.yaml", help="Fichier config YAML")
     sub = parser.add_subparsers(dest="command")
 
-    for name, help_text in [("run", "Grab + vérif HTTP"), ("grab", "Alias de run")]:
+    for name, help_text in [("run", "Grab CT → export"), ("grab", "Alias de run")]:
         p = sub.add_parser(name, help=help_text)
-        p.add_argument("-n", "--count", type=int, default=0, help="Domaines valides à exporter (0=illimité)")
+        p.add_argument("-n", "--count", type=int, default=0, help="Domaines à exporter (0=illimité)")
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
 
     scan_p = sub.add_parser("scan", help="Scanner vuln un fichier de domaines")

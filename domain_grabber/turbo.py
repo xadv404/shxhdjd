@@ -1,4 +1,4 @@
-"""Pipeline unique : CT → vérification HTTP → export."""
+"""Pipeline unique : CT → export (sans check HTTP)."""
 
 from __future__ import annotations
 
@@ -12,76 +12,37 @@ from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
 from domain_grabber.state import PanelState
 from domain_grabber.storage import DomainStore
-from domain_grabber.verify import DEFAULT_RESOLVERS, FastVerifier, VerifyConfig
-
-
-def _build_verify_config(cfg: dict[str, Any]) -> VerifyConfig:
-    v = cfg.get("verify", {})
-    perf = cfg.get("performance", {})
-    return VerifyConfig(
-        batch_size=int(v.get("batch_size", 2000)),
-        timeout=float(v.get("timeout", 2.0)),
-        ports=tuple(v.get("ports", [443, 80])),
-        require_http=bool(v.get("require_http", True)),
-        http_status_max=int(v.get("http_status_max", 499)),
-        dns_workers=int(v.get("dns_workers", 500)),
-        tcp_concurrency=int(v.get("tcp_concurrency", 1000)),
-        http_concurrency=int(v.get("http_concurrency", 400)),
-        masscan_rate=int(v.get("masscan_rate", 100_000)),
-        resolvers=list(v.get("resolvers") or DEFAULT_RESOLVERS),
-        resolvers_file=str(v.get("resolvers_file", "")),
-        prefer_tools=bool(v.get("prefer_tools", True)),
-    )
 
 
 class StatusLogger:
-    """Log [INFO] DOMAINS | VALIDS | domain/s toutes les N secondes."""
+    """Log [RECUP] DOMAINS | domain/s toutes les N secondes."""
 
     def __init__(self, interval: float = 3.0, panel: PanelState | None = None) -> None:
         self.interval = interval
         self.panel = panel
         self.domains = 0
-        self.valids = 0
-        self._prev_valids = 0
-        self._prev_time = time.time()
         self._start = time.time()
         self._task: asyncio.Task | None = None
 
-    def set(self, collected: int, valids: int, phase: str = "check") -> None:
+    def set(self, collected: int) -> None:
         self.domains = collected
-        self.valids = valids
         if self.panel:
-            if phase == "collect":
-                self.panel.set_phase("collect")
-                self.panel.update_collect(collected)
-            else:
-                self.panel.set_phase("check")
-                self.panel.update_check(collected, valids)
+            self.panel.set_phase("collect")
+            self.panel.update_collect(collected)
 
     def _log(self, line: str) -> None:
         print(line, flush=True)
         if self.panel:
             self.panel.add_log(line)
 
-    def emit(self) -> None:
-        self._log(
-            f"[RECUP] {self.domains} DOMAINS | {self._collect_rate()} domain/s"
-        )
-        self._log(
-            f"[CHECK] {self.valids} VALIDS | {self._check_rate()} domain/s"
-        )
-
-    def _collect_rate(self) -> int:
+    def _rate(self) -> int:
         if self.panel:
             return self.panel.collect_rate
         elapsed = max(time.time() - self._start, 0.001)
         return int(self.domains / elapsed)
 
-    def _check_rate(self) -> int:
-        if not self.panel:
-            elapsed = max(time.time() - self._start, 0.001)
-            return int(self.valids / elapsed)
-        return self.panel.check_rate
+    def emit(self) -> None:
+        self._log(f"[RECUP] {self.domains} DOMAINS | {self._rate()} domain/s")
 
     async def run(self) -> None:
         while True:
@@ -100,34 +61,8 @@ class StatusLogger:
                 pass
         self.emit()
         elapsed = max(time.time() - self._start, 0.001)
-        avg = int(self.valids / elapsed)
-        self._log(
-            f"[DONE] RECUP {self.domains} | CHECK {self.valids} | "
-            f"{self._check_rate()} domain/s avg"
-        )
-
-
-async def _collect_batch(
-    stream: Any,
-    batch_size: int,
-    deadline: float,
-    target_remaining: int,
-) -> list[str]:
-    batch: list[str] = []
-    seen: set[str] = set()
-    async for domains, _meta in stream:
-        for d in domains:
-            if d in seen:
-                continue
-            seen.add(d)
-            batch.append(d)
-            if len(batch) >= batch_size:
-                return batch
-            if target_remaining and len(batch) >= target_remaining:
-                return batch
-        if deadline and time.time() >= deadline:
-            break
-    return batch
+        avg = int(self.domains / elapsed)
+        self._log(f"[DONE] {self.domains} DOMAINS | {avg} domain/s avg")
 
 
 async def run_pipeline(
@@ -142,6 +77,8 @@ async def run_pipeline(
     new_cfg = cfg.get("new_domains", {})
     ct = cfg.get("sources", {}).get("ct_logs", {})
     log_interval = float(perf.get("log_interval", 3.0))
+    batch_write = int(perf.get("batch_write", 2000))
+    flush_interval = float(perf.get("flush_interval", 0.25))
 
     output_dir = Path(output.get("directory", "./output"))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -162,30 +99,19 @@ async def run_pipeline(
         target_count=target,
     )
 
-    verifier = FastVerifier(_build_verify_config(cfg))
-    verify_batch_size = verifier.cfg.batch_size
-    if verifier.tools.describe() == "async-fallback":
-        verify_batch_size = min(verify_batch_size, 1200)
-    if duration:
-        verify_batch_size = min(verify_batch_size, max(300, int(duration * 12)))
-
-    tools_msg = verifier.tools.describe()
     if panel:
-        panel.begin(tools_msg)
-        panel.add_log(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}")
-        if tools_msg == "async-fallback":
-            panel.add_log("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx")
+        panel.begin("ct-only")
+        panel.add_log("[INFO] Pipeline CT → export (sans check)")
     else:
-        print(f"[INFO] Pipeline {tools_msg} | batch={verify_batch_size}", flush=True)
-        if tools_msg == "async-fallback":
-            print("[INFO] Tip: bash scripts/install-verify-tools.sh for massdns+httpx", flush=True)
+        print("[INFO] Pipeline CT → export (sans check)", flush=True)
 
     status = StatusLogger(interval=log_interval, panel=panel)
     collected = 0
-    verified_count = 0
+    exported = 0
     start = time.time()
     deadline = start + duration if duration else 0.0
-    collect_task: asyncio.Task[list[str]] | None = None
+    last_flush = start
+    pending: list[str] = []
     logger_started = False
 
     stream = stream_ct_logs_batches(
@@ -198,47 +124,40 @@ async def run_pipeline(
         discover=bool(ct.get("discover", True)),
     )
 
-    def target_remaining() -> int:
-        if not target:
-            return 0
-        return max(0, target - pipeline.stats.exported)
-
-    def start_collect() -> asyncio.Task[list[str]]:
-        remaining = target_remaining()
-        size = verify_batch_size
-        if remaining and remaining < size:
-            size = remaining
-        return asyncio.create_task(_collect_batch(stream, size, deadline, remaining))
-
-    async def flush_export(domains: list[str], force: bool = False) -> None:
-        nonlocal db_flush_counter, verified_count
-        if not domains:
+    async def flush_export(force: bool = False) -> None:
+        nonlocal db_flush_counter, exported, last_flush, pending
+        if not pending:
+            return
+        now = time.time()
+        if not force and len(pending) < batch_write and (now - last_flush) < flush_interval:
             return
 
+        chunk = pending[:batch_write]
+        del pending[:batch_write]
+
         if new_only:
-            pairs = [(d, "ct_verify") for d in domains]
+            pairs = [(d, "ct_logs") for d in chunk]
             db_flush_counter += 1
             commit_db = force or db_flush_counter >= db_commit_interval
             export_list = await store.register_batch(pairs, commit=commit_db)
             if commit_db:
                 db_flush_counter = 0
-            pipeline.stats.duplicates += len(domains) - len(export_list)
+            pipeline.stats.duplicates += len(chunk) - len(export_list)
         else:
-            export_list = domains
+            export_list = chunk
 
         if export_list:
-            pipeline.process_batch(export_list, "ct_verify", flush=False)
-            verified_count += len(export_list)
+            pipeline.process_batch(export_list, "ct_logs", flush=False)
+            exported += len(export_list)
 
-        if force:
+        if force or (now - last_flush) >= flush_interval:
             pipeline._fh.flush()
+            last_flush = time.time()
 
-        status.set(collected, verified_count)
+        status.set(collected)
 
     try:
-        collect_task = start_collect()
-
-        while True:
+        async for domains, _meta in stream:
             if panel and panel.stop_event and panel.stop_event.is_set():
                 break
             if duration and time.time() >= deadline:
@@ -246,46 +165,28 @@ async def run_pipeline(
             if target and pipeline.stats.exported >= target:
                 break
 
-            batch = await collect_task
-            if not batch:
-                break
-            collected += len(batch)
-            status.set(collected, verified_count, phase="collect")
+            collected += len(domains)
+            pending.extend(domains)
+            await flush_export()
+            status.set(collected)
             if not logger_started:
                 status.start()
                 logger_started = True
 
-            if panel and panel.stop_event and panel.stop_event.is_set():
-                break
-            if duration and time.time() >= deadline:
-                break
-
-            if panel:
-                panel.set_phase("check")
-            collect_task = start_collect()
-            alive = await verifier.verify_batch(batch)
-            await flush_export([r.domain for r in alive])
-            status.set(collected, verified_count, phase="check")
-
-            if panel and panel.stop_event and panel.stop_event.is_set():
+            if target and pipeline.stats.exported >= target:
                 break
             if duration and time.time() >= deadline:
                 break
 
     finally:
-        if collect_task and not collect_task.done():
-            collect_task.cancel()
-            try:
-                await collect_task
-            except asyncio.CancelledError:
-                pass
+        await flush_export(force=True)
         await store.flush()
         await store.close()
         pipeline.close()
         if logger_started:
             await status.stop()
         else:
-            msg = "[INFO] DONE 0 DOMAINS | 0 VALIDS | 0 domain/s avg"
+            msg = "[DONE] 0 DOMAINS | 0 domain/s avg"
             if panel:
                 panel.add_log(msg)
             else:
@@ -298,5 +199,4 @@ async def run_pipeline(
             print(f"[INFO] Export → {export_path}", flush=True)
 
 
-# Alias rétrocompat
 run_turbo_grabber = run_pipeline

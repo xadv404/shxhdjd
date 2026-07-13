@@ -1,4 +1,4 @@
-# Domain Grabber — mode unique : CT + vérif HTTP + export
+# Domain Grabber — CT → export (sans check HTTP)
 
 output:
   directory: ./output
@@ -13,6 +13,8 @@ new_domains:
 performance:
   log_interval: 3
   format: txt
+  batch_write: 2000
+  flush_interval: 0.25
   db_commit_interval: 4
   inflight_per_log: 24
   parse_workers: 32
@@ -22,19 +24,6 @@ performance:
 panel:
   host: 0.0.0.0
   port: 8080
-
-verify:
-  require_http: true
-  batch_size: 2000
-  timeout: 2
-  http_concurrency: 400
-  tcp_concurrency: 1000
-  dns_workers: 500
-  masscan_rate: 100000
-  prefer_tools: true
-  resolvers_file: ""
-  ports: [443, 80]
-  http_status_max: 499
 
 sources:
   ct_logs:
