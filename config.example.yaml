@@ -1,39 +1,49 @@
-# Domain Grabber — CT → export (sans check HTTP)
+# Domain Grabber — multi CT logs, cible 10-15k domain/s
 
 output:
   directory: ./output
+  file: domains.txt
   format: txt
   deduplicate: true
 
 new_domains:
-  enabled: true
+  enabled: false
   database: ./data/domains.db
-  max_age_hours: 24
 
 performance:
-  log_interval: 3
+  log_interval: 1
   format: txt
-  batch_write: 2000
-  flush_interval: 0.25
-  db_commit_interval: 4
-  inflight_per_log: 24
+  batch_write: 5000
+  flush_interval: 0.15
+  db_commit_interval: 8
+  inflight_per_log: 48
   parse_workers: 32
-  tail: false
-  start_offset: 500000
-
-panel:
-  host: 0.0.0.0
-  port: 8080
+  start_offset: 600000
+  max_logs: 6
 
 sources:
   ct_logs:
     enabled: true
-    discover: true
-    tail: false
-    start_offset: 500000
+    max_logs: 6
+    # logs Google par défaut (+ extras auto si discover)
+    logs:
+      - https://ct.googleapis.com/logs/us1/argon2026h2
+      - https://ct.googleapis.com/logs/us1/argon2025h2
+      - https://ct.googleapis.com/logs/eu1/xenon2026h2
+      - https://ct.googleapis.com/logs/eu1/xenon2025h2
     batch_size: 32
-    inflight_per_log: 24
+    inflight_per_log: 48
     parse_workers: 32
+    start_offset: 600000
+
+filters:
+  zero_spam: true
+  punycode: false
+  ip_in_san: false
+  suspicious_tlds: []
+  require_match: false
+  min_domain_length: 4
+  max_domain_length: 253
 
 scanner:
   enabled: false
@@ -53,29 +63,6 @@ scanner:
   paths:
     - /.env
     - /.git/HEAD
-    - /graphql
-    - /api/graphql
-  lfi_params: [file, page, path, template, include]
+  lfi_params: [file, page, path]
   secret_patterns:
     - 'AKIA[0-9A-Z]{16}'
-    - 'sk_live_[0-9a-zA-Z]{24,}'
-    - 'ghp_[0-9a-zA-Z]{36}'
-
-filters:
-  zero_spam: true           # anti-spam CT (parking, free DNS, random, cloud noise)
-  # zero_spam:               # config détaillée optionnelle
-  #   enabled: true
-  #   block_free_dns: true
-  #   block_parking_tlds: true
-  #   block_cloud_noise: true
-  #   block_high_entropy: true
-  #   max_labels: 5
-  #   max_label_len: 32
-  #   allow_suffixes: []      # ex: [xyz] pour autoriser .xyz
-  #   extra_block_suffixes: []
-  punycode: false
-  ip_in_san: false
-  suspicious_tlds: []
-  require_match: false
-  min_domain_length: 4
-  max_domain_length: 253

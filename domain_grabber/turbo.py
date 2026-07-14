@@ -1,79 +1,18 @@
-"""Pipeline unique : CT → export (sans check HTTP)."""
+"""Pipeline multi CT logs + dashboard live."""
 
 from __future__ import annotations
 
-import asyncio
 import time
 from pathlib import Path
 from typing import Any
 
+from domain_grabber.dashboard import LiveDashboard
 from domain_grabber.filters import FilterConfig
 from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
 from domain_grabber.spam import build_spam_filter
 from domain_grabber.state import PanelState
 from domain_grabber.storage import DomainStore
-
-
-class StatusLogger:
-    """Log [RECUP] DOMAINS | CLEAN | domain/s toutes les N secondes."""
-
-    def __init__(self, interval: float = 3.0, panel: PanelState | None = None) -> None:
-        self.interval = interval
-        self.panel = panel
-        self.domains = 0
-        self.clean = 0
-        self.spam = 0
-        self._start = time.time()
-        self._task: asyncio.Task | None = None
-
-    def set(self, collected: int, clean: int = 0, spam: int = 0) -> None:
-        self.domains = collected
-        self.clean = clean
-        self.spam = spam
-        if self.panel:
-            self.panel.set_phase("collect")
-            self.panel.update_collect(clean)
-
-    def _log(self, line: str) -> None:
-        print(line, flush=True)
-        if self.panel:
-            self.panel.add_log(line)
-
-    def _rate(self) -> int:
-        if self.panel:
-            return self.panel.collect_rate
-        elapsed = max(time.time() - self._start, 0.001)
-        return int(self.clean / elapsed)
-
-    def emit(self) -> None:
-        self._log(
-            f"[RECUP] {self.domains} RAW | {self.clean} CLEAN | "
-            f"{self.spam} SPAM | {self._rate()} domain/s"
-        )
-
-    async def run(self) -> None:
-        while True:
-            await asyncio.sleep(self.interval)
-            self.emit()
-
-    def start(self) -> None:
-        self._task = asyncio.create_task(self.run())
-
-    async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        self.emit()
-        elapsed = max(time.time() - self._start, 0.001)
-        avg = int(self.clean / elapsed)
-        self._log(
-            f"[DONE] {self.clean} CLEAN / {self.domains} RAW "
-            f"({self.spam} spam) | {avg} domain/s avg"
-        )
 
 
 async def run_pipeline(
@@ -87,19 +26,24 @@ async def run_pipeline(
     output = cfg.get("output", {})
     new_cfg = cfg.get("new_domains", {})
     ct = cfg.get("sources", {}).get("ct_logs", {})
-    log_interval = float(perf.get("log_interval", 3.0))
-    batch_write = int(perf.get("batch_write", 2000))
-    flush_interval = float(perf.get("flush_interval", 0.25))
+    filters_cfg = cfg.get("filters", {})
+    zero_spam = filters_cfg.get("zero_spam", True)
+    filtering_on = bool(zero_spam.get("enabled", True)) if isinstance(zero_spam, dict) else bool(zero_spam)
+
+    batch_write = int(perf.get("batch_write", 5000))
+    flush_interval = float(perf.get("flush_interval", 0.15))
+    log_interval = float(perf.get("log_interval", 1.0))
 
     output_dir = Path(output.get("directory", "./output"))
     output_dir.mkdir(parents=True, exist_ok=True)
+    export_name = output.get("file", "domains.txt")
+    stable_path = output_dir / export_name
 
     store = DomainStore(Path(new_cfg.get("database", "./data/domains.db")))
     load_existing = new_cfg.get("enabled", True) and new_cfg.get("load_existing", True)
     await store.init(load_existing=load_existing)
-
     new_only = new_cfg.get("enabled", True)
-    db_commit_interval = int(perf.get("db_commit_interval", 4))
+    db_commit_interval = int(perf.get("db_commit_interval", 8))
     db_flush_counter = 0
 
     pipeline = DomainPipeline(
@@ -110,14 +54,18 @@ async def run_pipeline(
         target_count=target,
     )
 
-    if panel:
-        panel.begin("ct-only")
-        panel.add_log("[INFO] Pipeline CT → zero-spam → export")
-    else:
-        print("[INFO] Pipeline CT → zero-spam → export", flush=True)
-
     spam_filter = build_spam_filter(cfg)
-    status = StatusLogger(interval=log_interval, panel=panel)
+    dash = LiveDashboard(
+        interval=log_interval,
+        output_file=str(stable_path),
+        filtering=filtering_on,
+        recent_size=5,
+    )
+
+    if panel:
+        panel.begin("ct-multi")
+        panel.add_log("[INFO] Multi CT logs — cible 10-15k domain/s")
+
     collected = 0
     clean_count = 0
     spam_count = 0
@@ -128,15 +76,11 @@ async def run_pipeline(
     pending: list[str] = []
     logger_started = False
 
-    stream = stream_ct_logs_batches(
-        log_urls=ct.get("logs") or None,
-        batch_size=int(ct.get("batch_size", 32)),
-        inflight_per_log=int(ct.get("inflight_per_log", perf.get("inflight_per_log", 24))),
-        tail=bool(ct.get("tail", perf.get("tail", False))),
-        parse_workers=int(ct.get("parse_workers", perf.get("parse_workers", 32))),
-        start_offset=int(ct.get("start_offset", perf.get("start_offset", 500_000))),
-        discover=bool(ct.get("discover", True)),
-    )
+    inflight = int(ct.get("inflight_per_log", perf.get("inflight_per_log", 48)))
+    parse_workers = int(ct.get("parse_workers", perf.get("parse_workers", 32)))
+    start_offset = int(ct.get("start_offset", perf.get("start_offset", 500_000)))
+    max_logs = int(ct.get("max_logs", perf.get("max_logs", 8)))
+    log_urls = ct.get("logs") or None
 
     async def flush_export(force: bool = False) -> None:
         nonlocal db_flush_counter, exported, last_flush, pending
@@ -161,22 +105,42 @@ async def run_pipeline(
             export_list = chunk
 
         if export_list:
-            pipeline.process_batch(export_list, "ct_logs", flush=False)
+            # Écriture directe unique vers domains.txt (max débit)
+            with stable_path.open("a", encoding="utf-8") as fh:
+                fh.write("\n".join(export_list) + "\n")
             exported += len(export_list)
+            pipeline.stats.exported += len(export_list)
+            for d in export_list:
+                pipeline._seen.add(d)
 
-        if force or (now - last_flush) >= flush_interval:
-            pipeline._fh.flush()
-            last_flush = time.time()
+        dash.update(received=collected, filtered=clean_count, rejected=spam_count)
+        if panel:
+            panel.update_collect(clean_count)
 
-        status.set(collected, clean_count, spam_count)
+    stable_path.write_text("", encoding="utf-8")
 
     try:
-        async for domains, _meta in stream:
+        dash.start()
+        logger_started = True
+
+        async for domains, meta in stream_ct_logs_batches(
+            log_urls=log_urls,
+            batch_size=int(ct.get("batch_size", 32)),
+            inflight_per_log=inflight,
+            parse_workers=parse_workers,
+            start_offset=start_offset,
+            discover=bool(ct.get("discover", True)),
+            max_logs=max_logs,
+        ):
+            if meta.get("sources") and not domains:
+                dash.set_sources(int(meta["sources"]))
+                continue
+
             if panel and panel.stop_event and panel.stop_event.is_set():
                 break
             if duration and time.time() >= deadline:
                 break
-            if target and pipeline.stats.exported >= target:
+            if target and clean_count >= target:
                 break
 
             collected += len(domains)
@@ -184,13 +148,16 @@ async def run_pipeline(
             spam_count += rejected
             clean_count += len(kept)
             pending.extend(kept)
+            if kept:
+                dash.update(
+                    received=collected,
+                    filtered=clean_count,
+                    rejected=spam_count,
+                    recent=kept[-5:],
+                )
             await flush_export()
-            status.set(collected, clean_count, spam_count)
-            if not logger_started:
-                status.start()
-                logger_started = True
 
-            if target and pipeline.stats.exported >= target:
+            if target and clean_count >= target:
                 break
             if duration and time.time() >= deadline:
                 break
@@ -201,19 +168,9 @@ async def run_pipeline(
         await store.close()
         pipeline.close()
         if logger_started:
-            await status.stop()
-        else:
-            msg = "[DONE] 0 CLEAN / 0 RAW | 0 domain/s avg"
-            if panel:
-                panel.add_log(msg)
-            else:
-                print(msg, flush=True)
-        export_path = str(pipeline.output_file)
+            await dash.stop()
         if panel:
-            panel.finish(export_path)
-            panel.add_log(f"[INFO] Export → {export_path}")
-        else:
-            print(f"[INFO] Export → {export_path}", flush=True)
+            panel.finish(str(stable_path))
 
 
 run_turbo_grabber = run_pipeline
