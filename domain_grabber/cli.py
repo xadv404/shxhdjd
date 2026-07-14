@@ -126,7 +126,7 @@ async def run_stats(cfg: dict[str, Any]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Domain Grabber — CT + vérification HTTP + export",
+        description="Domain Grabber — CT grab + checker HTTP rapide",
     )
     parser.add_argument("-c", "--config", default="config.yaml", help="Fichier config YAML")
     sub = parser.add_subparsers(dest="command")
@@ -135,6 +135,12 @@ def main(argv: list[str] | None = None) -> None:
         p = sub.add_parser(name, help=help_text)
         p.add_argument("-n", "--count", type=int, default=0, help="Domaines à exporter (0=illimité)")
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
+
+    check_p = sub.add_parser("check", help="Checker HTTP ultra-rapide (ports 80/443)")
+    check_p.add_argument("-i", "--input", required=True, help="Fichier domaines (txt/jsonl)")
+    check_p.add_argument("-o", "--output", default="", help="Fichier output (défaut: output/alive_*.txt)")
+    check_p.add_argument("--concurrency", type=int, default=2000, help="Connexions parallèles")
+    check_p.add_argument("--timeout", type=float, default=1.2, help="Timeout par requête")
 
     scan_p = sub.add_parser("scan", help="Scanner vuln un fichier de domaines")
     scan_p.add_argument("-i", "--input", required=True, help="Fichier domains (txt ou jsonl)")
@@ -155,7 +161,20 @@ def main(argv: list[str] | None = None) -> None:
             cfg = load_config(cfg_path)
 
     cmd = args.command or "run"
-    if cmd == "scan":
+    if cmd == "check":
+        from domain_grabber.fast_check import run_http_check
+
+        inp = Path(args.input)
+        out = Path(args.output) if args.output else Path("output") / f"alive_{int(time.time())}.txt"
+        asyncio.run(
+            run_http_check(
+                inp,
+                out,
+                concurrency=args.concurrency,
+                timeout=args.timeout,
+            )
+        )
+    elif cmd == "scan":
         asyncio.run(run_scan_only(cfg, Path(args.input)))
     elif cmd == "stats":
         asyncio.run(run_stats(cfg))
