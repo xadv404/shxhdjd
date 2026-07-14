@@ -1,38 +1,46 @@
 #!/usr/bin/env bash
-# Installe les outils pour le pipeline verify max perf (root requis pour masscan)
+# Installe massdns + masscan + httpx (root recommandé)
 set -euo pipefail
 
-echo "=== Installation outils verify (massdns, masscan, httpx) ==="
+echo "=== install massdns / masscan / httpx ==="
 
 if command -v apt-get >/dev/null 2>&1; then
-  apt-get update -qq
-  apt-get install -y -qq git make gcc libpcap-dev curl unzip masscan 2>/dev/null || true
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq git make gcc libpcap-dev curl unzip ca-certificates 2>/dev/null || true
+  sudo apt-get install -y -qq masscan 2>/dev/null || true
 fi
 
 # massdns
 if ! command -v massdns >/dev/null 2>&1; then
-  echo "Building massdns..."
+  echo "[+] building massdns..."
   tmp=$(mktemp -d)
   git clone --depth 1 https://github.com/blechschmidt/massdns.git "$tmp/massdns"
   make -C "$tmp/massdns" -j"$(nproc)"
-  cp "$tmp/massdns/bin/massdns" /usr/local/bin/
+  sudo cp "$tmp/massdns/bin/massdns" /usr/local/bin/massdns
   rm -rf "$tmp"
 fi
 
 # httpx (ProjectDiscovery)
 if ! command -v httpx >/dev/null 2>&1; then
-  echo "Installing httpx..."
-  go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest 2>/dev/null || {
-    curl -fsSL https://github.com/projectdiscovery/httpx/releases/latest/download/httpx_linux_amd64.zip -o /tmp/httpx.zip
-    unzip -o /tmp/httpx.zip httpx -d /usr/local/bin/
-    chmod +x /usr/local/bin/httpx
-  }
+  echo "[+] installing httpx..."
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64) A=amd64 ;;
+    aarch64|arm64) A=arm64 ;;
+    *) A=amd64 ;;
+  esac
+  VER=$(curl -fsSL https://api.github.com/repos/projectdiscovery/httpx/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+' | head -1)
+  VER="${VER:-v1.6.10}"
+  URL="https://github.com/projectdiscovery/httpx/releases/download/${VER}/httpx_${VER#v}_linux_${A}.zip"
+  curl -fsSL "$URL" -o /tmp/httpx.zip || curl -fsSL "https://github.com/projectdiscovery/httpx/releases/latest/download/httpx_linux_${A}.zip" -o /tmp/httpx.zip
+  unzip -o /tmp/httpx.zip httpx -d /usr/local/bin/ 2>/dev/null || sudo unzip -o /tmp/httpx.zip httpx -d /usr/local/bin/
+  sudo chmod +x /usr/local/bin/httpx
 fi
 
 echo ""
-echo "Outils détectés:"
-command -v massdns && massdns --version 2>/dev/null | head -1 || echo "  massdns: absent"
-command -v masscan && masscan --version 2>/dev/null | head -1 || echo "  masscan: absent"
-command -v httpx && httpx -version 2>/dev/null | head -1 || echo "  httpx: absent"
+echo "OK:"
+command -v massdns && massdns 2>&1 | head -1 || true
+command -v masscan && masscan --version 2>&1 | head -1 || true
+command -v httpx && httpx -version 2>&1 | head -1 || true
 echo ""
-echo "Usage: python3 main.py grab --verify --no-scan -t 60"
+echo "Usage: bash scripts/check.sh domains.txt alive.txt"

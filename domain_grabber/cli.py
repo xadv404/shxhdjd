@@ -136,11 +136,10 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("-n", "--count", type=int, default=0, help="Domaines à exporter (0=illimité)")
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
 
-    check_p = sub.add_parser("check", help="Checker HTTP ultra-rapide (ports 80/443)")
+    check_p = sub.add_parser("check", help="Checker HTTP externe ultra-rapide (massdns→masscan→httpx)")
     check_p.add_argument("-i", "--input", required=True, help="Fichier domaines (txt/jsonl)")
     check_p.add_argument("-o", "--output", default="", help="Fichier output (défaut: output/alive_*.txt)")
-    check_p.add_argument("--concurrency", type=int, default=2000, help="Connexions parallèles")
-    check_p.add_argument("--timeout", type=float, default=1.2, help="Timeout par requête")
+    check_p.add_argument("--rate", type=int, default=100000, help="Masscan packets/s")
 
     scan_p = sub.add_parser("scan", help="Scanner vuln un fichier de domaines")
     scan_p.add_argument("-i", "--input", required=True, help="Fichier domains (txt ou jsonl)")
@@ -162,18 +161,16 @@ def main(argv: list[str] | None = None) -> None:
 
     cmd = args.command or "run"
     if cmd == "check":
-        from domain_grabber.fast_check import run_http_check
+        import subprocess
 
+        script = Path(__file__).resolve().parent.parent / "scripts" / "check.sh"
         inp = Path(args.input)
         out = Path(args.output) if args.output else Path("output") / f"alive_{int(time.time())}.txt"
-        asyncio.run(
-            run_http_check(
-                inp,
-                out,
-                concurrency=args.concurrency,
-                timeout=args.timeout,
-            )
-        )
+        if not script.exists():
+            print(f"[ERR] script introuvable: {script}", flush=True)
+            raise SystemExit(1)
+        rate = str(getattr(args, "rate", 100000) or 100000)
+        raise SystemExit(subprocess.call(["bash", str(script), str(inp), str(out), rate]))
     elif cmd == "scan":
         asyncio.run(run_scan_only(cfg, Path(args.input)))
     elif cmd == "stats":
