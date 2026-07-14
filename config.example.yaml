@@ -62,6 +62,17 @@ scanner:
     - 'ghp_[0-9a-zA-Z]{36}'
 
 filters:
+  zero_spam: true           # anti-spam CT (parking, free DNS, random, cloud noise)
+  # zero_spam:               # config détaillée optionnelle
+  #   enabled: true
+  #   block_free_dns: true
+  #   block_parking_tlds: true
+  #   block_cloud_noise: true
+  #   block_high_entropy: true
+  #   max_labels: 5
+  #   max_label_len: 32
+  #   allow_suffixes: []      # ex: [xyz] pour autoriser .xyz
+  #   extra_block_suffixes: []
   punycode: false
   ip_in_san: false
   suspicious_tlds: []

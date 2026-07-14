@@ -10,25 +10,30 @@ from typing import Any
 from domain_grabber.filters import FilterConfig
 from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
+from domain_grabber.spam import build_spam_filter
 from domain_grabber.state import PanelState
 from domain_grabber.storage import DomainStore
 
 
 class StatusLogger:
-    """Log [RECUP] DOMAINS | domain/s toutes les N secondes."""
+    """Log [RECUP] DOMAINS | CLEAN | domain/s toutes les N secondes."""
 
     def __init__(self, interval: float = 3.0, panel: PanelState | None = None) -> None:
         self.interval = interval
         self.panel = panel
         self.domains = 0
+        self.clean = 0
+        self.spam = 0
         self._start = time.time()
         self._task: asyncio.Task | None = None
 
-    def set(self, collected: int) -> None:
+    def set(self, collected: int, clean: int = 0, spam: int = 0) -> None:
         self.domains = collected
+        self.clean = clean
+        self.spam = spam
         if self.panel:
             self.panel.set_phase("collect")
-            self.panel.update_collect(collected)
+            self.panel.update_collect(clean)
 
     def _log(self, line: str) -> None:
         print(line, flush=True)
@@ -39,10 +44,13 @@ class StatusLogger:
         if self.panel:
             return self.panel.collect_rate
         elapsed = max(time.time() - self._start, 0.001)
-        return int(self.domains / elapsed)
+        return int(self.clean / elapsed)
 
     def emit(self) -> None:
-        self._log(f"[RECUP] {self.domains} DOMAINS | {self._rate()} domain/s")
+        self._log(
+            f"[RECUP] {self.domains} RAW | {self.clean} CLEAN | "
+            f"{self.spam} SPAM | {self._rate()} domain/s"
+        )
 
     async def run(self) -> None:
         while True:
@@ -61,8 +69,11 @@ class StatusLogger:
                 pass
         self.emit()
         elapsed = max(time.time() - self._start, 0.001)
-        avg = int(self.domains / elapsed)
-        self._log(f"[DONE] {self.domains} DOMAINS | {avg} domain/s avg")
+        avg = int(self.clean / elapsed)
+        self._log(
+            f"[DONE] {self.clean} CLEAN / {self.domains} RAW "
+            f"({self.spam} spam) | {avg} domain/s avg"
+        )
 
 
 async def run_pipeline(
@@ -101,12 +112,15 @@ async def run_pipeline(
 
     if panel:
         panel.begin("ct-only")
-        panel.add_log("[INFO] Pipeline CT → export (sans check)")
+        panel.add_log("[INFO] Pipeline CT → zero-spam → export")
     else:
-        print("[INFO] Pipeline CT → export (sans check)", flush=True)
+        print("[INFO] Pipeline CT → zero-spam → export", flush=True)
 
+    spam_filter = build_spam_filter(cfg)
     status = StatusLogger(interval=log_interval, panel=panel)
     collected = 0
+    clean_count = 0
+    spam_count = 0
     exported = 0
     start = time.time()
     deadline = start + duration if duration else 0.0
@@ -154,7 +168,7 @@ async def run_pipeline(
             pipeline._fh.flush()
             last_flush = time.time()
 
-        status.set(collected)
+        status.set(collected, clean_count, spam_count)
 
     try:
         async for domains, _meta in stream:
@@ -166,9 +180,12 @@ async def run_pipeline(
                 break
 
             collected += len(domains)
-            pending.extend(domains)
+            kept, rejected = spam_filter.filter_list(domains)
+            spam_count += rejected
+            clean_count += len(kept)
+            pending.extend(kept)
             await flush_export()
-            status.set(collected)
+            status.set(collected, clean_count, spam_count)
             if not logger_started:
                 status.start()
                 logger_started = True
@@ -186,7 +203,7 @@ async def run_pipeline(
         if logger_started:
             await status.stop()
         else:
-            msg = "[DONE] 0 DOMAINS | 0 domain/s avg"
+            msg = "[DONE] 0 CLEAN / 0 RAW | 0 domain/s avg"
             if panel:
                 panel.add_log(msg)
             else:
