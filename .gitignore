@@ -1,8 +1,9 @@
+config.yaml
+data/
+*.db
+.env
+output/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.env
-data/
-output/
-*.db
 .venv/
