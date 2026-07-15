@@ -1,0 +1,76 @@
+# Domain Grabber — config adaptée connexion moyenne (~50 Mbit)
+
+output:
+  directory: ./output
+  file: domains.txt
+  format: txt
+  deduplicate: true
+
+# false = max débit (pas de SQLite)
+new_domains:
+  enabled: false
+  database: ./data/domains.db
+
+performance:
+  log_interval: 1
+  format: txt
+  batch_write: 3000
+  flush_interval: 0.2
+  db_commit_interval: 8
+  # Baisser si timeouts / connexion faible (ex: 16)
+  # Monter si ligne >500 Mbit (ex: 48)
+  inflight_per_log: 24
+  parse_workers: 16
+  start_offset: 400000
+  max_logs: 4
+
+panel:
+  host: 0.0.0.0
+  port: 8080
+
+sources:
+  ct_logs:
+    enabled: true
+    discover: false
+    max_logs: 4
+    # 4 logs Google (meilleurs débits mesurés)
+    logs:
+      - https://ct.googleapis.com/logs/us1/argon2026h2
+      - https://ct.googleapis.com/logs/us1/argon2025h2
+      - https://ct.googleapis.com/logs/eu1/xenon2026h2
+      - https://ct.googleapis.com/logs/eu1/xenon2025h2
+    batch_size: 32
+    inflight_per_log: 24
+    parse_workers: 16
+    start_offset: 400000
+
+filters:
+  zero_spam: true
+  punycode: false
+  ip_in_san: false
+  suspicious_tlds: []
+  require_match: false
+  min_domain_length: 4
+  max_domain_length: 253
+
+scanner:
+  enabled: false
+  concurrency: 50
+  timeout: 10
+  aggressive: false
+  callback_url: ""
+  checks:
+    lfi: true
+    private_paths: true
+    git_dump: true
+    react2shell: true
+    xxe: true
+    ssrf: true
+    ggb: true
+    secrets: true
+  paths:
+    - /.env
+    - /.git/HEAD
+  lfi_params: [file, page, path]
+  secret_patterns:
+    - 'AKIA[0-9A-Z]{16}'
