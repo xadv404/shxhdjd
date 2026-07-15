@@ -1,4 +1,4 @@
-# Domain Grabber — multi CT logs, cible 10-15k domain/s
+# Domain Grabber — config adaptée connexion moyenne (~50 Mbit)
 
 output:
   directory: ./output
@@ -6,6 +6,7 @@ output:
   format: txt
   deduplicate: true
 
+# false = max débit (pas de SQLite)
 new_domains:
   enabled: false
   database: ./data/domains.db
@@ -13,28 +14,35 @@ new_domains:
 performance:
   log_interval: 1
   format: txt
-  batch_write: 5000
-  flush_interval: 0.15
+  batch_write: 3000
+  flush_interval: 0.2
   db_commit_interval: 8
-  inflight_per_log: 48
-  parse_workers: 32
-  start_offset: 600000
-  max_logs: 6
+  # Baisser si timeouts / connexion faible (ex: 16)
+  # Monter si ligne >500 Mbit (ex: 48)
+  inflight_per_log: 24
+  parse_workers: 16
+  start_offset: 400000
+  max_logs: 4
+
+panel:
+  host: 0.0.0.0
+  port: 8080
 
 sources:
   ct_logs:
     enabled: true
-    max_logs: 6
-    # logs Google par défaut (+ extras auto si discover)
+    discover: false
+    max_logs: 4
+    # 4 logs Google (meilleurs débits mesurés)
     logs:
       - https://ct.googleapis.com/logs/us1/argon2026h2
       - https://ct.googleapis.com/logs/us1/argon2025h2
       - https://ct.googleapis.com/logs/eu1/xenon2026h2
       - https://ct.googleapis.com/logs/eu1/xenon2025h2
     batch_size: 32
-    inflight_per_log: 48
-    parse_workers: 32
-    start_offset: 600000
+    inflight_per_log: 24
+    parse_workers: 16
+    start_offset: 400000
 
 filters:
   zero_spam: true
