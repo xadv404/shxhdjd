@@ -1,6 +1,6 @@
 # domain-grabber (Go)
 
-Grab CT + check TCP — **6 cores / 6 Go RAM / ~1.7 Gbps**.
+Lance le binaire — **grab CT + check TCP 80/443** en même temps.
 
 ## Build
 
@@ -12,15 +12,10 @@ go build -o grabber ./cmd/grabber
 
 ```bash
 ulimit -n 1048576
-
-# Grab CT → écrit domains.txt en temps réel
-./grabber grab
-
-# Stop = Ctrl+C (les domaines sont déjà dans le fichier)
-
-# Check ports 80/443 sur output/domains.txt → output/alive.txt
-./grabber check
+./grabber
 ```
 
-Tout le tuning est dans `config.yaml` (pas d’autres flags).
-Throttle auto si CPU ou RAM > **80%**.
+- `output/domains.txt` — tous les domaines filtrés (temps réel)
+- `output/alive.txt` — ceux avec port 80 ou 443 ouvert (temps réel)
+
+Stop = **Ctrl+C**. Config dans `config.yaml`.

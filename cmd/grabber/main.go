@@ -4,14 +4,16 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/xadv404/shxhdjd/internal/check"
 	"github.com/xadv404/shxhdjd/internal/config"
 	"github.com/xadv404/shxhdjd/internal/ct"
 	"github.com/xadv404/shxhdjd/internal/dashboard"
@@ -21,44 +23,20 @@ import (
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-	switch os.Args[1] {
-	case "grab":
-		os.Exit(runGrab())
-	case "check":
-		os.Exit(runCheck())
-	case "help", "-h", "--help":
-		usage()
-	default:
-		fmt.Fprintf(os.Stderr, "unknown: %s\n", os.Args[1])
-		usage()
-		os.Exit(2)
-	}
+	os.Exit(run())
 }
 
-func usage() {
-	fmt.Fprintln(os.Stderr, `usage:
-  ./grabber grab    # CT → output/domains.txt (temps réel, Ctrl+C pour stop)
-  ./grabber check   # TCP 80/443 sur output/domains.txt → output/alive.txt
-
-config.yaml = toutes les options (pas d'autres flags)`)
-}
-
-func loadCfg() (*config.Config, error) {
-	return config.Load("config.yaml")
-}
-
-func runGrab() int {
-	cfg, err := loadCfg()
+func run() int {
+	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	outFile := filepath.Join(cfg.Output.Directory, cfg.Output.File)
-	if err := os.MkdirAll(filepath.Dir(outFile), 0o755); err != nil {
+
+	outDir := cfg.Output.Directory
+	domainsPath := filepath.Join(outDir, cfg.Output.File)
+	alivePath := filepath.Join(outDir, "alive.txt")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -83,13 +61,70 @@ func runGrab() int {
 	g := ct.NewGrabber(cfg, th, filter)
 	g.Run(ctx)
 
-	f, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	domainsFile, err := os.OpenFile(domainsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer f.Close()
-	w := bufio.NewWriterSize(f, 64*1024)
+	defer domainsFile.Close()
+	domainsW := bufio.NewWriterSize(domainsFile, 64*1024)
+
+	aliveFile, err := os.OpenFile(alivePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer aliveFile.Close()
+	aliveW := bufio.NewWriterSize(aliveFile, 64*1024)
+	var aliveMu sync.Mutex
+
+	workers := cfg.Performance.CheckWorkers
+	if workers <= 0 {
+		workers = 4000
+	}
+	timeout := time.Duration(cfg.Performance.CheckTimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 600 * time.Millisecond
+	}
+	checkJobs := make(chan string, workers*2)
+
+	var (
+		written atomic.Int64
+		aliveN  atomic.Int64
+		deadN   atomic.Int64
+		probes  atomic.Int64
+	)
+
+	var checkWG sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		checkWG.Add(1)
+		go func() {
+			defer checkWG.Done()
+			dialer := net.Dialer{Timeout: timeout}
+			for domain := range checkJobs {
+				th.Wait()
+				ok := false
+				for _, p := range []int{80, 443} {
+					probes.Add(1)
+					conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(domain, fmt.Sprintf("%d", p)))
+					if err == nil {
+						_ = conn.Close()
+						ok = true
+						break
+					}
+				}
+				if ok {
+					aliveN.Add(1)
+					aliveMu.Lock()
+					fmt.Fprintln(aliveW, domain)
+					_ = aliveW.Flush()
+					aliveMu.Unlock()
+				} else {
+					deadN.Add(1)
+				}
+			}
+		}()
+	}
 
 	live := dashboard.New()
 	start := time.Now()
@@ -108,11 +143,17 @@ func runGrab() int {
 	syncTicker := time.NewTicker(time.Second)
 	defer syncTicker.Stop()
 
-	var written int64
 	finish := func() {
-		_ = w.Flush()
-		_ = f.Sync()
-		fmt.Fprintf(os.Stderr, "\nstopped — %d domains → %s\n", written, outFile)
+		close(checkJobs)
+		checkWG.Wait()
+		_ = domainsW.Flush()
+		_ = domainsFile.Sync()
+		aliveMu.Lock()
+		_ = aliveW.Flush()
+		_ = aliveFile.Sync()
+		aliveMu.Unlock()
+		fmt.Fprintf(os.Stderr, "\nstopped — domains=%d alive=%d → %s / %s\n",
+			written.Load(), aliveN.Load(), domainsPath, alivePath)
 	}
 
 	for {
@@ -129,12 +170,21 @@ func runGrab() int {
 				continue
 			}
 			seen[d] = struct{}{}
-			fmt.Fprintln(w, d)
-			_ = w.Flush() // temps réel dans domains.txt
-			written++
+			fmt.Fprintln(domainsW, d)
+			_ = domainsW.Flush()
+			written.Add(1)
 			live.AddRecent(d)
+			select {
+			case <-ctx.Done():
+				finish()
+				return 0
+			case checkJobs <- d:
+			}
 		case <-syncTicker.C:
-			_ = f.Sync()
+			_ = domainsFile.Sync()
+			aliveMu.Lock()
+			_ = aliveFile.Sync()
+			aliveMu.Unlock()
 		case <-ticker.C:
 			elapsed := time.Since(start).Seconds()
 			rate := 0.0
@@ -149,98 +199,13 @@ func runGrab() int {
 				Rejected:  g.Stats.Rejected.Load(),
 				Bytes:     g.Stats.Bytes.Load(),
 				Sources:   sources,
-				File:      outFile,
+				File:      domainsPath,
 				CPU:       th.CPU(),
 				RAM:       th.RAM(),
 				Throttled: th.Active(),
 				Recent:    live.Recent(),
-				Extra:     fmt.Sprintf("pages=%d err=%d unique=%d", g.Stats.Pages.Load(), g.Stats.Errors.Load(), written),
-			})
-		}
-	}
-}
-
-func runCheck() int {
-	cfg, err := loadCfg()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	inPath := filepath.Join(cfg.Output.Directory, cfg.Output.File)
-	outPath := filepath.Join(cfg.Output.Directory, "alive.txt")
-	if err := os.MkdirAll(cfg.Output.Directory, 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	if _, err := os.Stat(inPath); err != nil {
-		fmt.Fprintf(os.Stderr, "input manquant: %s (lance d'abord ./grabber grab)\n", inPath)
-		return 1
-	}
-
-	th := throttle.New(
-		cfg.Throttle.Enabled,
-		cfg.Throttle.CPUPercent,
-		cfg.Throttle.RAMPercent,
-		cfg.Throttle.CheckIntervalMs,
-		cfg.Throttle.SleepMs,
-	)
-	defer th.Stop()
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	c := check.New(cfg, th)
-	live := dashboard.New()
-	start := time.Now()
-	done := make(chan error, 1)
-	go func() { done <- c.RunFile(ctx, inPath, outPath) }()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case err := <-done:
-			elapsed := time.Since(start).Seconds()
-			rate := 0.0
-			if elapsed > 0 {
-				rate = float64(c.Stats.Total.Load()) / elapsed
-			}
-			live.Render(dashboard.Snapshot{
-				Uptime:    time.Since(start),
-				Rate:      rate,
-				Raw:       c.Stats.Total.Load(),
-				Filtered:  c.Stats.Alive.Load(),
-				Rejected:  c.Stats.Dead.Load(),
-				File:      outPath,
-				CPU:       th.CPU(),
-				RAM:       th.RAM(),
-				Throttled: th.Active(),
-				Extra:     fmt.Sprintf("TCP 80/443 input=%s", inPath),
-			})
-			if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			fmt.Fprintf(os.Stderr, "\ndone — alive=%d dead=%d → %s\n",
-				c.Stats.Alive.Load(), c.Stats.Dead.Load(), outPath)
-			return 0
-		case <-ticker.C:
-			elapsed := time.Since(start).Seconds()
-			rate := 0.0
-			if elapsed > 0 {
-				rate = float64(c.Stats.Total.Load()) / elapsed
-			}
-			live.Render(dashboard.Snapshot{
-				Uptime:    time.Since(start),
-				Rate:      rate,
-				Raw:       c.Stats.Total.Load(),
-				Filtered:  c.Stats.Alive.Load(),
-				Rejected:  c.Stats.Dead.Load(),
-				File:      outPath,
-				CPU:       th.CPU(),
-				RAM:       th.RAM(),
-				Throttled: th.Active(),
-				Extra:     fmt.Sprintf("TCP 80/443 workers=%d", cfg.Performance.CheckWorkers),
+				Extra: fmt.Sprintf("unique=%d alive=%d dead=%d probes=%d → %s",
+					written.Load(), aliveN.Load(), deadN.Load(), probes.Load(), alivePath),
 			})
 		}
 	}

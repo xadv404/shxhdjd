@@ -58,7 +58,7 @@ func (l *Live) Render(s Snapshot) {
 	var b strings.Builder
 	b.WriteString("\033[H\033[2J")
 	b.WriteString("╔══════════════════════════════════════════════════════════╗\n")
-	b.WriteString("║              DOMAIN GRABBER — GO / MAX PERF              ║\n")
+	b.WriteString("║         GRAB + CHECK 80/443 — GO / MAX PERF              ║\n")
 	b.WriteString("╚══════════════════════════════════════════════════════════╝\n\n")
 	b.WriteString(fmt.Sprintf("  Time       %s\n", time.Now().Format("15:04:05")))
 	b.WriteString(fmt.Sprintf("  Uptime     %s\n", fmtDur(s.Uptime)))
@@ -68,7 +68,7 @@ func (l *Live) Render(s Snapshot) {
 	b.WriteString(fmt.Sprintf("  Filtrés    %s\n", itoa(s.Filtered)))
 	b.WriteString(fmt.Sprintf("  Rejetées   %s\n", itoa(s.Rejected)))
 	if s.File != "" {
-		b.WriteString(fmt.Sprintf("  Fichier    %s\n", s.File))
+		b.WriteString(fmt.Sprintf("  Domains    %s\n", s.File))
 	}
 	th := "ok"
 	if s.Throttled {
