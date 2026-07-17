@@ -1,18 +1,15 @@
 # domain-grabber (Go)
 
-Version Go max-perf du grabber CT — optimisée pour **6 cores / 6 Go RAM / ~1.7 Gbps**.
+Grabber CT max-perf — **6 cores / 6 Go RAM / ~1.7 Gbps**.
 
 ## Build
 
 ```bash
-cd go-grabber
 cp -n config.example.yaml config.yaml
 go build -o grabber ./cmd/grabber
 ```
 
 ## Config
-
-`config.yaml` est déjà tuné au max :
 
 | Param | Valeur | Rôle |
 |------|--------|------|
@@ -28,19 +25,8 @@ Quand CPU ou RAM dépasse **80%**, le pipeline dort par pas de 50 ms jusqu’à 
 ## Usage
 
 ```bash
-# Grab CT → output/domains.txt
-./grabber grab -c config.yaml
-
-# Stop auto après 60s
-./grabber grab -t 60
-
-# Check ports TCP 80/443
-./grabber check -i output/domains.txt -o output/alive.txt
-```
-
-## Tips VPS
-
-```bash
 ulimit -n 1048576
 ./grabber grab
+./grabber grab -t 60
+./grabber check -i output/domains.txt -o output/alive.txt
 ```

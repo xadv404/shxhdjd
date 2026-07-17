@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xadv404/shxhdjd/go-grabber/internal/check"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/config"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/ct"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/dashboard"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/spam"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/throttle"
+	"github.com/xadv404/shxhdjd/internal/check"
+	"github.com/xadv404/shxhdjd/internal/config"
+	"github.com/xadv404/shxhdjd/internal/ct"
+	"github.com/xadv404/shxhdjd/internal/dashboard"
+	"github.com/xadv404/shxhdjd/internal/spam"
+	"github.com/xadv404/shxhdjd/internal/throttle"
 )
 
 func main() {

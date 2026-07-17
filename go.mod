@@ -1,4 +1,4 @@
-module github.com/xadv404/shxhdjd/go-grabber
+module github.com/xadv404/shxhdjd
 
 go 1.22
 

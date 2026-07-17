@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/xadv404/shxhdjd/go-grabber/internal/config"
-	"github.com/xadv404/shxhdjd/go-grabber/internal/throttle"
+	"github.com/xadv404/shxhdjd/internal/config"
+	"github.com/xadv404/shxhdjd/internal/throttle"
 )
 
 type Stats struct {

@@ -1,4 +1,0 @@
-/grabber
-/output/
-*.txt
-!go.sum

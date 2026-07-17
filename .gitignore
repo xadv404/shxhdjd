@@ -1,9 +1,8 @@
+/grabber
 config.yaml
+output/
 data/
 *.db
 .env
-output/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
+*.txt
+!go.sum
