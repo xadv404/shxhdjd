@@ -4,7 +4,7 @@ Lance le binaire — grab CT + check TCP 80/443.
 
 ## Windows
 
-`grabber.exe` est déjà dans le repo. Ou :
+Prérequis : [Go](https://go.dev/dl/) installé.
 
 ```bat
 build.bat
