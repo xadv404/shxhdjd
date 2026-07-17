@@ -5,11 +5,12 @@ Grabber CT max-perf — **6 cores / 6 Go RAM / ~1.7 Gbps**.
 ## Build
 
 ```bash
-cp -n config.example.yaml config.yaml
 go build -o grabber ./cmd/grabber
 ```
 
 ## Config
+
+`config.yaml` est déjà présent et tuné au max :
 
 | Param | Valeur | Rôle |
 |------|--------|------|

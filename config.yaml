@@ -1,5 +1,4 @@
 # Config max — 6 cores / 6 Go RAM / 1.7 Gbps
-# cp config.example.yaml config.yaml
 output:
   directory: ./output
   file: domains.txt

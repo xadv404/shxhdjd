@@ -1,5 +1,4 @@
 /grabber
-config.yaml
 output/
 data/
 *.db
