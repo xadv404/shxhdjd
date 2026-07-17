@@ -1,27 +1,13 @@
 # Config max — 6 cores / 6 Go RAM / 1.7 Gbps
+# Input: ton fichier .txt (1 domaine / ligne) via -i
 output:
   directory: ./output
-  file: domains.txt
+  file: alive.txt
 
 performance:
   log_interval_ms: 1000
-  inflight_per_log: 64
-  parse_workers: 6
-  start_offset: 800000
-  max_logs: 4
-  batch_write: 5000
   check_workers: 4000
   check_timeout_ms: 600
-
-sources:
-  logs:
-    - https://ct.googleapis.com/logs/us1/argon2026h2
-    - https://ct.googleapis.com/logs/us1/argon2025h2
-    - https://ct.googleapis.com/logs/eu1/xenon2026h2
-    - https://ct.googleapis.com/logs/eu1/xenon2025h2
-
-filters:
-  zero_spam: true
 
 throttle:
   enabled: true
