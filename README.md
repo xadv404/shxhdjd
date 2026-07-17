@@ -1,8 +1,6 @@
 # domain-grabber (Go)
 
-Grab CT max-perf — **6 cores / 6 Go RAM / ~1.7 Gbps**.
-
-Tout est dans `config.yaml`. Aucun flag.
+Grab CT + check TCP — **6 cores / 6 Go RAM / ~1.7 Gbps**.
 
 ## Build
 
@@ -14,9 +12,15 @@ go build -o grabber ./cmd/grabber
 
 ```bash
 ulimit -n 1048576
-./grabber
+
+# Grab CT → écrit domains.txt en temps réel
+./grabber grab
+
+# Stop = Ctrl+C (les domaines sont déjà dans le fichier)
+
+# Check ports 80/443 sur output/domains.txt → output/alive.txt
+./grabber check
 ```
 
-Écrit dans `output/domains.txt`. Stop avec `Ctrl+C`.
-
+Tout le tuning est dans `config.yaml` (pas d’autres flags).
 Throttle auto si CPU ou RAM > **80%**.
