@@ -2,15 +2,19 @@
 
 Lance le binaire — grab CT + check TCP 80/443.
 
-## Build
+## Windows
+
+`grabber.exe` est déjà dans le repo. Ou :
+
+```bat
+build.bat
+grabber.exe
+```
+
+## Linux / macOS
 
 ```bash
 go build -o grabber ./cmd/grabber
-```
-
-## Usage
-
-```bash
 ulimit -n 1048576
 ./grabber
 ```
