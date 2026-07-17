@@ -1,4 +1,4 @@
-"""Pipeline multi CT logs + dashboard live."""
+"""Pipeline multi CT logs + dashboard CLI."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from domain_grabber.filters import FilterConfig
 from domain_grabber.pipeline import DomainPipeline
 from domain_grabber.sources.ct_logs import stream_ct_logs_batches
 from domain_grabber.spam import build_spam_filter
-from domain_grabber.state import PanelState
 from domain_grabber.storage import DomainStore
 
 
@@ -19,9 +18,7 @@ async def run_pipeline(
     cfg: dict[str, Any],
     target: int = 0,
     duration: int = 0,
-    state: PanelState | None = None,
 ) -> None:
-    panel = state
     perf = cfg.get("performance", {})
     output = cfg.get("output", {})
     new_cfg = cfg.get("new_domains", {})
@@ -62,10 +59,6 @@ async def run_pipeline(
         recent_size=5,
     )
 
-    if panel:
-        panel.begin("ct-multi")
-        panel.add_log("[INFO] Multi CT logs — cible 10-15k domain/s")
-
     collected = 0
     clean_count = 0
     spam_count = 0
@@ -105,7 +98,6 @@ async def run_pipeline(
             export_list = chunk
 
         if export_list:
-            # Écriture directe unique vers domains.txt (max débit)
             with stable_path.open("a", encoding="utf-8") as fh:
                 fh.write("\n".join(export_list) + "\n")
             exported += len(export_list)
@@ -114,8 +106,6 @@ async def run_pipeline(
                 pipeline._seen.add(d)
 
         dash.update(received=collected, filtered=clean_count, rejected=spam_count)
-        if panel:
-            panel.update_collect(clean_count)
 
     stable_path.write_text("", encoding="utf-8")
 
@@ -136,8 +126,6 @@ async def run_pipeline(
                 dash.set_sources(int(meta["sources"]))
                 continue
 
-            if panel and panel.stop_event and panel.stop_event.is_set():
-                break
             if duration and time.time() >= deadline:
                 break
             if target and clean_count >= target:
@@ -169,8 +157,6 @@ async def run_pipeline(
         pipeline.close()
         if logger_started:
             await dash.stop()
-        if panel:
-            panel.finish(str(stable_path))
 
 
 run_turbo_grabber = run_pipeline
