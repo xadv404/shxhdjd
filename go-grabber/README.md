@@ -6,6 +6,7 @@ Version Go max-perf du grabber CT — optimisée pour **6 cores / 6 Go RAM / ~1.
 
 ```bash
 cd go-grabber
+cp -n config.example.yaml config.yaml
 go build -o grabber ./cmd/grabber
 ```
 

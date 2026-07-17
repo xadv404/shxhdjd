@@ -1,4 +1,4 @@
-grabber
-output/
+/grabber
+/output/
 *.txt
 !go.sum
