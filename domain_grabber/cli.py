@@ -136,22 +136,11 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("-n", "--count", type=int, default=0, help="Domaines à exporter (0=illimité)")
         p.add_argument("-t", "--time", type=int, default=0, help="Durée en secondes (0=illimité)")
 
-    check_p = sub.add_parser("check", help="Checker rapide ports 80/443 (TCP, option HTTP)")
+    check_p = sub.add_parser("check", help="Check ports 80/443 (TCP)")
     check_p.add_argument("-i", "--input", required=True, help="Fichier domaines (txt/jsonl)")
     check_p.add_argument("-o", "--output", default="", help="Fichier output (défaut: output/alive_*.txt)")
     check_p.add_argument("--concurrency", type=int, default=2000, help="Workers parallèles")
-    check_p.add_argument("--timeout", type=float, default=0.8, help="Timeout TCP/HTTP (s)")
-    check_p.add_argument(
-        "--http",
-        action="store_true",
-        help="Exige une réponse HTTP (plus lent). Défaut = port ouvert seulement",
-    )
-    check_p.add_argument(
-        "--external",
-        action="store_true",
-        help="Pipeline massdns→masscan→httpx (scripts/check.sh)",
-    )
-    check_p.add_argument("--rate", type=int, default=100000, help="Masscan rate si --external")
+    check_p.add_argument("--timeout", type=float, default=0.8, help="Timeout TCP (s)")
 
     scan_p = sub.add_parser("scan", help="Scanner vuln un fichier de domaines")
     scan_p.add_argument("-i", "--input", required=True, help="Fichier domains (txt ou jsonl)")

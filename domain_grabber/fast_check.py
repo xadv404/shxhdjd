@@ -1,7 +1,4 @@
-"""Checker ultra-rapide ports 80/443 (TCP) — option HTTP.
-
-Cible: plusieurs centaines à 1k+/s selon la connexion.
-"""
+"""Check ports 80/443 (TCP) — ultra rapide."""
 
 from __future__ import annotations
 
@@ -17,7 +14,6 @@ class CheckStats:
     total: int = 0
     done: int = 0
     open_ports: int = 0
-    alive: int = 0
     start: float = 0.0
 
     @property
@@ -25,8 +21,8 @@ class CheckStats:
         return self.done / max(time.time() - self.start, 0.001)
 
     @property
-    def alive_rate(self) -> float:
-        return self.alive / max(time.time() - self.start, 0.001)
+    def open_rate(self) -> float:
+        return self.open_ports / max(time.time() - self.start, 0.001)
 
 
 def _load_domains(path: Path) -> list[str]:
@@ -49,11 +45,10 @@ def _load_domains(path: Path) -> list[str]:
     return out
 
 
-def _emit(stats: CheckStats, mode: str) -> None:
+def _emit(stats: CheckStats) -> None:
     print(
         f"[CHECK] {stats.done}/{stats.total} | open={stats.open_ports} | "
-        f"alive={stats.alive} | {int(stats.probe_rate)} probe/s | "
-        f"{int(stats.alive_rate)} alive/s | mode={mode}",
+        f"{int(stats.probe_rate)} probe/s | {int(stats.open_rate)} open/s",
         flush=True,
     )
 
@@ -71,66 +66,27 @@ async def _tcp_open(host: str, port: int, timeout: float) -> bool:
         return False
 
 
-async def _http_alive(host: str, port: int, timeout: float) -> bool:
-    """HTTP HEAD minimal via raw socket (plus léger qu'aiohttp)."""
-    import ssl
-
-    try:
-        if port == 443:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port, ssl=ctx, server_hostname=host),
-                timeout=timeout,
-            )
-        else:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port),
-                timeout=timeout,
-            )
-        req = (
-            f"HEAD / HTTP/1.0\r\nHost: {host}\r\nUser-Agent: dg-check\r\nConnection: close\r\n\r\n"
-        )
-        writer.write(req.encode())
-        await writer.drain()
-        data = await asyncio.wait_for(reader.read(128), timeout=timeout)
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
-        return data.startswith(b"HTTP/")
-    except Exception:
-        return False
-
-
 async def run_fast_check(
     input_file: Path,
     output_file: Path,
     *,
     concurrency: int = 2000,
     timeout: float = 0.8,
-    require_http: bool = False,
+    require_http: bool = False,  # ignoré — ports only
     log_interval: float = 2.0,
     chunk_size: int = 2000,
 ) -> CheckStats:
-    """
-    require_http=False → port 80/443 ouvert = alive (max speed)
-    require_http=True  → + réponse HTTP
-    """
+    """Exporte les domaines avec port 80 ou 443 ouvert."""
     domains = _load_domains(input_file)
     stats = CheckStats(total=len(domains), start=time.time())
-    mode = "tcp+http" if require_http else "tcp"
     if not domains:
         print("[CHECK] 0 domaines", flush=True)
         return stats
 
-    # Cap workers selon mode
-    workers = min(concurrency, 3000 if not require_http else 800)
+    workers = min(concurrency, 3000)
     print(
-        f"[CHECK] {len(domains)} domaines | mode={mode} | "
-        f"workers={workers} | timeout={timeout}s | ports=80,443",
+        f"[CHECK] {len(domains)} domaines | TCP 80/443 | "
+        f"workers={workers} | timeout={timeout}s",
         flush=True,
     )
 
@@ -141,34 +97,19 @@ async def run_fast_check(
 
     async def handle(domain: str) -> None:
         nonlocal last_log
-        open_port = 0
-        if await _tcp_open(domain, 443, timeout):
-            open_port = 443
-        elif await _tcp_open(domain, 80, timeout):
-            open_port = 80
-
-        alive = False
-        if open_port:
-            if require_http:
-                alive = await _http_alive(domain, open_port, timeout)
-            else:
-                alive = True
-
+        opened = await _tcp_open(domain, 443, timeout) or await _tcp_open(domain, 80, timeout)
         async with lock:
             stats.done += 1
-            if open_port:
+            if opened:
                 stats.open_ports += 1
-            if alive:
-                stats.alive += 1
                 out.write(domain + "\n")
-                if stats.alive % 200 == 0:
+                if stats.open_ports % 200 == 0:
                     out.flush()
             now = time.time()
             if now - last_log >= log_interval:
-                _emit(stats, mode)
+                _emit(stats)
                 last_log = now
 
-    # Chunks = évite saturate FD
     for i in range(0, len(domains), chunk_size):
         chunk = domains[i : i + chunk_size]
         sem = asyncio.Semaphore(workers)
@@ -182,12 +123,12 @@ async def run_fast_check(
 
     out.flush()
     out.close()
-    _emit(stats, mode)
+    _emit(stats)
     elapsed = max(time.time() - stats.start, 0.001)
     print(
-        f"[DONE] {stats.alive}/{stats.total} ALIVE ({100 * stats.alive / max(stats.total, 1):.0f}%) | "
-        f"{int(stats.done / elapsed)} probe/s | {int(stats.alive / elapsed)} alive/s | "
-        f"→ {output_file}",
+        f"[DONE] {stats.open_ports}/{stats.total} OPEN "
+        f"({100 * stats.open_ports / max(stats.total, 1):.0f}%) | "
+        f"{int(stats.done / elapsed)} probe/s | → {output_file}",
         flush=True,
     )
     return stats
