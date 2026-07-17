@@ -34,8 +34,7 @@ func run() int {
 	}
 
 	outDir := cfg.Output.Directory
-	domainsPath := filepath.Join(outDir, cfg.Output.File)
-	alivePath := filepath.Join(outDir, "alive.txt")
+	alivePath := filepath.Join(outDir, cfg.Output.File)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -61,14 +60,6 @@ func run() int {
 	g := ct.NewGrabber(cfg, th, filter)
 	g.Run(ctx)
 
-	domainsFile, err := os.OpenFile(domainsPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	defer domainsFile.Close()
-	domainsW := bufio.NewWriterSize(domainsFile, 64*1024)
-
 	aliveFile, err := os.OpenFile(alivePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -89,7 +80,7 @@ func run() int {
 	checkJobs := make(chan string, workers*2)
 
 	var (
-		written atomic.Int64
+		checked atomic.Int64
 		aliveN  atomic.Int64
 		deadN   atomic.Int64
 		probes  atomic.Int64
@@ -113,6 +104,7 @@ func run() int {
 						break
 					}
 				}
+				checked.Add(1)
 				if ok {
 					aliveN.Add(1)
 					aliveMu.Lock()
@@ -146,14 +138,11 @@ func run() int {
 	finish := func() {
 		close(checkJobs)
 		checkWG.Wait()
-		_ = domainsW.Flush()
-		_ = domainsFile.Sync()
 		aliveMu.Lock()
 		_ = aliveW.Flush()
 		_ = aliveFile.Sync()
 		aliveMu.Unlock()
-		fmt.Fprintf(os.Stderr, "\nstopped — domains=%d alive=%d → %s / %s\n",
-			written.Load(), aliveN.Load(), domainsPath, alivePath)
+		fmt.Fprintf(os.Stderr, "\nstopped — alive=%d → %s\n", aliveN.Load(), alivePath)
 	}
 
 	for {
@@ -170,9 +159,6 @@ func run() int {
 				continue
 			}
 			seen[d] = struct{}{}
-			fmt.Fprintln(domainsW, d)
-			_ = domainsW.Flush()
-			written.Add(1)
 			live.AddRecent(d)
 			select {
 			case <-ctx.Done():
@@ -181,7 +167,6 @@ func run() int {
 			case checkJobs <- d:
 			}
 		case <-syncTicker.C:
-			_ = domainsFile.Sync()
 			aliveMu.Lock()
 			_ = aliveFile.Sync()
 			aliveMu.Unlock()
@@ -189,7 +174,7 @@ func run() int {
 			elapsed := time.Since(start).Seconds()
 			rate := 0.0
 			if elapsed > 0 {
-				rate = float64(g.Stats.Filtered.Load()) / elapsed
+				rate = float64(aliveN.Load()) / elapsed
 			}
 			live.Render(dashboard.Snapshot{
 				Uptime:    time.Since(start),
@@ -199,13 +184,13 @@ func run() int {
 				Rejected:  g.Stats.Rejected.Load(),
 				Bytes:     g.Stats.Bytes.Load(),
 				Sources:   sources,
-				File:      domainsPath,
+				File:      alivePath,
 				CPU:       th.CPU(),
 				RAM:       th.RAM(),
 				Throttled: th.Active(),
 				Recent:    live.Recent(),
-				Extra: fmt.Sprintf("unique=%d alive=%d dead=%d probes=%d → %s",
-					written.Load(), aliveN.Load(), deadN.Load(), probes.Load(), alivePath),
+				Extra: fmt.Sprintf("checked=%d alive=%d dead=%d probes=%d",
+					checked.Load(), aliveN.Load(), deadN.Load(), probes.Load()),
 			})
 		}
 	}

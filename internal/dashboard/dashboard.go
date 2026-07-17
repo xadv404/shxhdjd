@@ -68,7 +68,7 @@ func (l *Live) Render(s Snapshot) {
 	b.WriteString(fmt.Sprintf("  Filtrés    %s\n", itoa(s.Filtered)))
 	b.WriteString(fmt.Sprintf("  Rejetées   %s\n", itoa(s.Rejected)))
 	if s.File != "" {
-		b.WriteString(fmt.Sprintf("  Domains    %s\n", s.File))
+		b.WriteString(fmt.Sprintf("  Alive      %s\n", s.File))
 	}
 	th := "ok"
 	if s.Throttled {

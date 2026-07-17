@@ -39,7 +39,7 @@ type Config struct {
 func Default() *Config {
 	c := &Config{}
 	c.Output.Directory = "./output"
-	c.Output.File = "domains.txt"
+	c.Output.File = "alive.txt"
 	c.Performance.LogIntervalMs = 1000
 	c.Performance.InflightPerLog = 64
 	c.Performance.ParseWorkers = 6

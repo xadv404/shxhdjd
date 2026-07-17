@@ -1,7 +1,7 @@
 # Config max — 6 cores / 6 Go RAM / 1.7 Gbps
 output:
   directory: ./output
-  file: domains.txt
+  file: alive.txt
 
 performance:
   log_interval_ms: 1000
