@@ -58,14 +58,15 @@ func (l *Live) Render(s Snapshot) {
 	var b strings.Builder
 	b.WriteString("\033[H\033[2J")
 	b.WriteString("╔══════════════════════════════════════════════════════════╗\n")
-	b.WriteString("║           PORT CHECK 80/443 — GO / MAX PERF              ║\n")
+	b.WriteString("║              DOMAIN GRABBER — GO / MAX PERF              ║\n")
 	b.WriteString("╚══════════════════════════════════════════════════════════╝\n\n")
 	b.WriteString(fmt.Sprintf("  Time       %s\n", time.Now().Format("15:04:05")))
 	b.WriteString(fmt.Sprintf("  Uptime     %s\n", fmtDur(s.Uptime)))
 	b.WriteString(fmt.Sprintf("  Domaines/s %.0f\n", s.Rate))
-	b.WriteString(fmt.Sprintf("  Scannés    %s\n", itoa(s.Raw)))
-	b.WriteString(fmt.Sprintf("  Alive      %s\n", itoa(s.Filtered)))
-	b.WriteString(fmt.Sprintf("  Dead       %s\n", itoa(s.Rejected)))
+	b.WriteString(fmt.Sprintf("  Flux reçus %s  (%s)\n", itoa(s.Raw), bytes(s.Bytes)))
+	b.WriteString(fmt.Sprintf("  Sources    %d CT logs\n", s.Sources))
+	b.WriteString(fmt.Sprintf("  Filtrés    %s\n", itoa(s.Filtered)))
+	b.WriteString(fmt.Sprintf("  Rejetées   %s\n", itoa(s.Rejected)))
 	if s.File != "" {
 		b.WriteString(fmt.Sprintf("  Fichier    %s\n", s.File))
 	}
@@ -77,11 +78,9 @@ func (l *Live) Render(s Snapshot) {
 	if s.Extra != "" {
 		b.WriteString("  " + s.Extra + "\n")
 	}
-	if len(s.Recent) > 0 {
-		b.WriteString("\n  Derniers:\n")
-		for _, d := range s.Recent {
-			b.WriteString("    · " + d + "\n")
-		}
+	b.WriteString("\n  Derniers:\n")
+	for _, d := range s.Recent {
+		b.WriteString("    · " + d + "\n")
 	}
 	fmt.Fprint(os.Stderr, b.String())
 }
@@ -108,4 +107,17 @@ func itoa(n int64) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	}
 	return fmt.Sprintf("%.2fM", float64(n)/1_000_000)
+}
+
+func bytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(n)/float64(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/float64(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }

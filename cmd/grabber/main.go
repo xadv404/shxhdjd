@@ -1,45 +1,36 @@
 package main
 
 import (
+	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/xadv404/shxhdjd/internal/check"
 	"github.com/xadv404/shxhdjd/internal/config"
+	"github.com/xadv404/shxhdjd/internal/ct"
 	"github.com/xadv404/shxhdjd/internal/dashboard"
+	"github.com/xadv404/shxhdjd/internal/spam"
 	"github.com/xadv404/shxhdjd/internal/throttle"
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	os.Exit(run(os.Args[1:]))
-}
 
-func run(args []string) int {
-	fs := flag.NewFlagSet("grabber", flag.ExitOnError)
-	cfgPath := fs.String("c", "config.yaml", "config file")
-	inPath := fs.String("i", "", "input domains .txt (one domain per line)")
-	outPath := fs.String("o", "alive.txt", "output alive domains")
-	secs := fs.Int("t", 0, "stop after N seconds (0 = until done / Ctrl+C)")
-	_ = fs.Parse(args)
-
-	if strings.TrimSpace(*inPath) == "" {
-		fmt.Fprintln(os.Stderr, "usage: grabber -i domains.txt [-o alive.txt] [-c config.yaml] [-t seconds]")
-		fmt.Fprintln(os.Stderr, "check TCP 80/443 — throttle auto si CPU/RAM > 80%")
-		return 2
-	}
-
-	cfg, err := config.Load(*cfgPath)
+	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
+		os.Exit(1)
+	}
+
+	outFile := filepath.Join(cfg.Output.Directory, cfg.Output.File)
+	if err := os.MkdirAll(filepath.Dir(outFile), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	th := throttle.New(
@@ -51,66 +42,94 @@ func run(args []string) int {
 	)
 	defer th.Stop()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-	if *secs > 0 {
-		var tcancel context.CancelFunc
-		ctx, tcancel = context.WithTimeout(ctx, time.Duration(*secs)*time.Second)
-		defer tcancel()
+	filter := func(string) bool { return true }
+	if cfg.Filters.ZeroSpam {
+		filter = spam.IsClean
 	}
 
-	c := check.New(cfg, th)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	g := ct.NewGrabber(cfg, th, filter)
+	g.Run(ctx)
+
+	f, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer f.Close()
+	w := bufio.NewWriterSize(f, 1<<20)
+	defer w.Flush()
+
 	live := dashboard.New()
 	start := time.Now()
-	done := make(chan error, 1)
-	go func() { done <- c.RunFile(ctx, *inPath, *outPath) }()
-
-	ticker := time.NewTicker(time.Second)
+	seen := make(map[string]struct{}, 1<<20)
+	batch := make([]string, 0, cfg.Performance.BatchWrite)
+	flushEvery := time.Duration(cfg.Performance.LogIntervalMs) * time.Millisecond
+	if flushEvery <= 0 {
+		flushEvery = time.Second
+	}
+	ticker := time.NewTicker(flushEvery)
 	defer ticker.Stop()
+
+	flush := func() {
+		for _, d := range batch {
+			fmt.Fprintln(w, d)
+		}
+		batch = batch[:0]
+		_ = w.Flush()
+	}
+
+	sources := len(cfg.Sources.Logs)
+	if cfg.Performance.MaxLogs > 0 && sources > cfg.Performance.MaxLogs {
+		sources = cfg.Performance.MaxLogs
+	}
+
+	var written int64
 	for {
 		select {
-		case err := <-done:
-			elapsed := time.Since(start).Seconds()
-			rate := 0.0
-			if elapsed > 0 {
-				rate = float64(c.Stats.Total.Load()) / elapsed
+		case <-ctx.Done():
+			flush()
+			fmt.Fprintf(os.Stderr, "\nstopped — %d domains → %s\n", written, outFile)
+			return
+		case d, ok := <-g.Out:
+			if !ok {
+				flush()
+				fmt.Fprintf(os.Stderr, "\ndone — %d domains → %s\n", written, outFile)
+				return
 			}
-			live.Render(dashboard.Snapshot{
-				Uptime:    time.Since(start),
-				Rate:      rate,
-				Raw:       c.Stats.Total.Load(),
-				Filtered:  c.Stats.Alive.Load(),
-				Rejected:  c.Stats.Dead.Load(),
-				File:      *outPath,
-				CPU:       th.CPU(),
-				RAM:       th.RAM(),
-				Throttled: th.Active(),
-				Extra:     fmt.Sprintf("TCP 80/443 probes=%d input=%s", c.Stats.Probes.Load(), *inPath),
-			})
-			if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
+			if _, exists := seen[d]; exists {
+				continue
 			}
-			fmt.Fprintf(os.Stderr, "\ndone — alive=%d dead=%d → %s\n",
-				c.Stats.Alive.Load(), c.Stats.Dead.Load(), *outPath)
-			return 0
+			seen[d] = struct{}{}
+			batch = append(batch, d)
+			written++
+			live.AddRecent(d)
+			if len(batch) >= cfg.Performance.BatchWrite {
+				flush()
+			}
 		case <-ticker.C:
+			flush()
 			elapsed := time.Since(start).Seconds()
 			rate := 0.0
 			if elapsed > 0 {
-				rate = float64(c.Stats.Total.Load()) / elapsed
+				rate = float64(g.Stats.Filtered.Load()) / elapsed
 			}
 			live.Render(dashboard.Snapshot{
 				Uptime:    time.Since(start),
 				Rate:      rate,
-				Raw:       c.Stats.Total.Load(),
-				Filtered:  c.Stats.Alive.Load(),
-				Rejected:  c.Stats.Dead.Load(),
-				File:      *outPath,
+				Raw:       g.Stats.Raw.Load(),
+				Filtered:  g.Stats.Filtered.Load(),
+				Rejected:  g.Stats.Rejected.Load(),
+				Bytes:     g.Stats.Bytes.Load(),
+				Sources:   sources,
+				File:      outFile,
 				CPU:       th.CPU(),
 				RAM:       th.RAM(),
 				Throttled: th.Active(),
-				Extra:     fmt.Sprintf("TCP 80/443 workers=%d input=%s", cfg.Performance.CheckWorkers, *inPath),
+				Recent:    live.Recent(),
+				Extra:     fmt.Sprintf("pages=%d err=%d unique=%d", g.Stats.Pages.Load(), g.Stats.Errors.Load(), written),
 			})
 		}
 	}
