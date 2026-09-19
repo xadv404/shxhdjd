@@ -1,0 +1,8 @@
+/grabber
+*.exe
+output/
+data/
+*.db
+.env
+*.txt
+!go.sum
